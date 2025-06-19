@@ -1,5 +1,6 @@
 import os
 import sys
+from collections import defaultdict
 
 import pandas as pd
 import streamlit as st
@@ -48,13 +49,20 @@ def main():
             recommendations = recommend_preprocessing(df)
 
             with st.expander("📋 Show Detailed Column Recommendations"):
+                grouped_recs = defaultdict(list)
                 for col, rec in recommendations.items():
-                    st.markdown(f"🔧 **{col}** → _{rec}_")
+                    category = col.split(".")[0] if "." in col else "project"
+                    grouped_recs[category].append((col, rec))
+
+                for category, items in grouped_recs.items():
+                    with st.expander(f"📁 {category}"):
+                        for col, rec in items:
+                            st.markdown(f"🔧 **{col}** → _{rec}_")
 
             # 🔹 Category summary table
-            st.markdown("### 📊 Category Summary Table")
             summary_df = summarize_categories(df, recommendations)
-            st.dataframe(summary_df)
+            st.markdown("### 📊 Preprocessing Recommendation Summary")
+            st.dataframe(summary_df, use_container_width=True)
 
             # 🔹 Apply preprocessing
             show_logs = st.checkbox(
@@ -63,7 +71,11 @@ def main():
             )
 
             if st.button("🚀 Apply Recommended Preprocessing"):
+                orig_shape = df.shape
                 df_proc = apply_preprocessing(df, recommendations, show_logs)
+                st.write(
+                    f"🔄 Data shape changed from `{orig_shape}` → `{df_proc.shape}`"
+                )
                 st.success("✅ Preprocessing Applied!")
                 st.dataframe(df_proc.head())
 
