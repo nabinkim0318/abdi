@@ -8,30 +8,35 @@ from scipy.stats import skew
 
 def recommend_preprocessing(df: pd.DataFrame) -> dict:
     """
-    Recommend preprocessing for each column based on type,
-    uniqueness, skew, and NaN rate.
+    Recommend preprocessing strategy for each column.
+
+    Returns a dictionary {column_name: recommendation_string}
     """
+
     recommendations = {}
 
     for col in df.columns:
         series = df[col]
         recs = []
 
-        # ⚠️ Empty column
-        if series.dropna().empty:
-            recommendations[col] = "⚠️ Empty column - consider removing"
+        # 🚫 Drop if empty or no variation
+        if series.dropna().empty or series.nunique(dropna=True) == 0:
+            recommendations[col] = "DropColumn"
             continue
 
         null_ratio = series.isnull().mean()
         nunique = series.nunique()
 
-        # 📊 Type-based strategy
+        # 🔠 Categorical or object columns
         if is_object_dtype(series):
             if nunique <= 10:
                 recs.append("OneHotEncoder")
-            else:
+            elif nunique <= 50:
                 recs.append("LabelEncoder")
+            else:
+                recs.append("LabelEncoder + ⚠️ HighCardinality")
 
+        # 🔢 Numeric columns
         elif is_integer_dtype(series) or is_float_dtype(series):
             if nunique <= 5:
                 recs.append("LabelEncoder")
@@ -45,14 +50,19 @@ def recommend_preprocessing(df: pd.DataFrame) -> dict:
                 else:
                     recs.append("MinMaxScaler")
         else:
-            recs.append("Unknown")
+            recs.append("UnknownType")
 
-        # ❗ NaN Handling
-        if null_ratio > 0.3:
+        # 🧼 Missing value handling
+        if null_ratio >= 0.95:
             recs.append("DropHighNaNs")
-        elif 0 < null_ratio <= 0.3:
+        elif null_ratio > 0.5:
+            recs.append("ImputeMissing + ⚠️ ConsiderDropping")
+        elif null_ratio > 0.3:
+            recs.append("ImputeMissing + ⚠️ HighMissingRate")
+        elif null_ratio > 0:
             recs.append("ImputeMissing")
 
+        # Finalize
         recommendations[col] = " + ".join(recs)
 
     return recommendations
