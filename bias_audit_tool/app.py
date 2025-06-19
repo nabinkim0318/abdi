@@ -141,12 +141,12 @@ def main():
                     show_visualizations(df_proc, audit_cols)
 
                     if export_btn and df_proc is not None and audit_cols:
-                        buffer = generate_pdf_report(
+                        pdf_buffer = generate_pdf_report(
                             df_proc, audit_cols, recommendations
                         )
                         st.download_button(
                             "📥 Download PDF Report",
-                            buffer,
+                            pdf_buffer,
                             "bias_audit_report.pdf",
                             mime="application/pdf",
                         )
