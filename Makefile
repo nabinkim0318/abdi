@@ -16,8 +16,8 @@ lint:
 	poetry run black --check bias_audit_tool
 
 format:
-	poetry run black bias_audit_tool
 	poetry run ruff bias_audit_tool --fix
+	poetry run black bias_audit_tool
 
 test:
 	poetry run pytest tests
