@@ -12,15 +12,25 @@ def show_visualizations(df, audit_cols):
             st.warning(f"⚠️ Column `{col}` has only NaNs.")
             continue
 
-        # Histogram
-        fig1, ax1 = plt.subplots()
-        sns.histplot(x=df[col].dropna(), kde=True, ax=ax1)
-        st.pyplot(fig1)
+        dtype = df[col].dropna().dtype
+        unique_vals = df[col].nunique(dropna=True)
 
-        # Boxplot
-        fig2, ax2 = plt.subplots()
-        sns.boxplot(x=df[col].dropna(), ax=ax2)
-        st.pyplot(fig2)
+        # 카테고리형 시각화
+        if dtype == "object" or unique_vals < 10:
+            fig1, ax1 = plt.subplots()
+            sns.countplot(x=col, data=df, order=df[col].value_counts().index, ax=ax1)
+            ax1.set_xticklabels(ax1.get_xticklabels(), rotation=45)
+            st.pyplot(fig1)
+
+        # 숫자형 시각화
+        else:
+            fig1, ax1 = plt.subplots()
+            sns.histplot(df[col].dropna(), kde=True, ax=ax1)
+            st.pyplot(fig1)
+
+            fig2, ax2 = plt.subplots()
+            sns.boxplot(x=df[col].dropna(), ax=ax2)
+            st.pyplot(fig2)
 
     # NaN Heatmap
     st.markdown("#### 🔥 Missing Value Heatmap")
