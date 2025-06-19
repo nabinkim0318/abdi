@@ -1,14 +1,15 @@
 import os
 import sys
 
-import matplotlib.pyplot as plt
 import pandas as pd
-import seaborn as sns
 import streamlit as st
 from report.report_generator import generate_pdf_report
 from utils.preprocess import recommend_preprocessing
+from utils.recommend_columns import identify_demographic_columns
 from utils.summary import summarize_categories
 from utils.transform import apply_preprocessing
+from visualization.visualization import show_groupwise_visualizations
+from visualization.visualization import show_visualizations
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
@@ -27,31 +28,6 @@ export_btn = st.sidebar.button("📤 Export PDF Report")
 
 # ===== Main Panel =====
 st.title("🧪 Bias Audit Dashboard")
-
-
-def show_visualizations(df, audit_cols):
-    for col in audit_cols:
-        st.markdown(f"#### 🔍 Visualizations for `{col}`")
-
-        if df[col].dropna().empty:
-            st.warning(f"⚠️ Column `{col}` has only NaNs.")
-            continue
-
-        # Histogram
-        fig1, ax1 = plt.subplots()
-        sns.histplot(x=df[col].dropna(), kde=True, ax=ax1)
-        st.pyplot(fig1)
-
-        # Boxplot
-        fig2, ax2 = plt.subplots()
-        sns.boxplot(x=df[col].dropna(), ax=ax2)
-        st.pyplot(fig2)
-
-    # NaN Heatmap (entire df)
-    st.markdown("#### 🔥 Missing Value Heatmap")
-    fig3, ax3 = plt.subplots(figsize=(10, 0.25 * len(df.columns)))
-    sns.heatmap(df.isnull(), cbar=False, yticklabels=False, ax=ax3)
-    st.pyplot(fig3)
 
 
 def main():
@@ -90,6 +66,29 @@ def main():
                 df_proc = apply_preprocessing(df, recommendations, show_logs)
                 st.success("✅ Preprocessing Applied!")
                 st.dataframe(df_proc.head())
+
+                st.markdown("### 🧬 Demographic Column Audit")
+
+                demographic_candidates = identify_demographic_columns(df_proc)
+                st.sidebar.markdown("#### 🧬 Auto-Detected Demographics")
+                st.sidebar.write(
+                    ", ".join(demographic_candidates) or "❌ None found"
+                )
+
+                selected_demo_cols = st.multiselect(
+                    "👥 Select Demographic Columns for Group-wise Audit",
+                    demographic_candidates,
+                    default=demographic_candidates,
+                )
+
+                if selected_demo_cols:
+                    st.markdown("### 👥 Demographic Group-wise Analysis")
+                    target_col = st.selectbox(
+                        "🎯 Select Target Column (Optional)", df_proc.columns
+                    )
+                    show_groupwise_visualizations(
+                        df_proc, selected_demo_cols, target_col
+                    )
 
                 # 📥 Download processed CSV
                 csv_buffer = df_proc.to_csv(index=False).encode("utf-8")
