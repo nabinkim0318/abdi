@@ -44,3 +44,12 @@ check:
 
 precommit:
 	pre-commit run --all-files
+
+commit:
+ifndef m
+	$(error ❌ Please provide a commit message like: make commit m="your message")
+endif
+	@git status
+	@git add .
+	@git commit -m "$(m)"
+	@git push
