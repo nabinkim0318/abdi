@@ -5,6 +5,8 @@ from collections import defaultdict
 import pandas as pd
 import streamlit as st
 from report.report_generator import generate_pdf_report
+from sklearn.metrics import roc_auc_score
+from utils.model_selector import run_basic_modeling
 from utils.preprocess import recommend_preprocessing
 from utils.recommend_columns import identify_demographic_columns
 from utils.summary import summarize_categories
@@ -154,12 +156,20 @@ def main():
                 st.info("🚀 Please apply preprocessing to enable audit.")
 
             # 🔹 Modeling
-            if enable_modeling == "Yes":
-                st.markdown("### 🤖 ML Metrics & Fairness Charts")
-                st.write("📉 Placeholder for model performance & fairness metrics.")
-                st.write(
-                    "⚙️ Placeholder for SHAP or permutation importance by " "group."
-                )
+            if enable_modeling == "Yes" and target_col:
+                X = df_proc.drop(columns=[target_col])
+                y = df_proc[target_col]
+                results = run_basic_modeling(X, y)
+
+                st.markdown("### 🔍 Classification Report")
+                st.dataframe(results["report"])
+
+                if results["y_prob"] is not None:
+                    st.markdown(
+                        "📈 ROC AUC: {:.2f}".format(
+                            roc_auc_score(results["y_test"], results["y_prob"])
+                        )
+                    )
 
         except Exception as e:
             st.error(f"❌ Error loading or processing the file:\n\n{e}")
