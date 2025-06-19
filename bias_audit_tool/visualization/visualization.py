@@ -21,22 +21,25 @@ def show_visualizations(df, audit_cols):
             sns.countplot(x=col, data=df, order=df[col].value_counts().index, ax=ax1)
             ax1.set_xticklabels(ax1.get_xticklabels(), rotation=45)
             st.pyplot(fig1)
-
+            plt.close(fig1)
         # 숫자형 시각화
         else:
             fig1, ax1 = plt.subplots()
             sns.histplot(df[col].dropna(), kde=True, ax=ax1)
             st.pyplot(fig1)
+            plt.close(fig1)
 
             fig2, ax2 = plt.subplots()
             sns.boxplot(x=df[col].dropna(), ax=ax2)
             st.pyplot(fig2)
+            plt.close(fig2)
 
     # NaN Heatmap
     st.markdown("#### 🔥 Missing Value Heatmap")
     fig3, ax3 = plt.subplots(figsize=(10, 0.25 * len(df.columns)))
     sns.heatmap(df.isnull(), cbar=False, yticklabels=False, ax=ax3)
     st.pyplot(fig3)
+    plt.close(fig3)
 
 
 def show_groupwise_visualizations(df, demo_cols, target_col=None):
@@ -47,11 +50,14 @@ def show_groupwise_visualizations(df, demo_cols, target_col=None):
                 fig, ax = plt.subplots()
                 sns.boxplot(x=df[col], y=df[target_col], ax=ax)
                 st.pyplot(fig)
+                plt.close(fig)
             else:
                 fig, ax = plt.subplots()
                 sns.countplot(x=df[col], hue=df[target_col], ax=ax)
                 st.pyplot(fig)
+                plt.close(fig)
         else:
             fig, ax = plt.subplots()
             sns.countplot(x=df[col], ax=ax)
             st.pyplot(fig)
+            plt.close(fig)

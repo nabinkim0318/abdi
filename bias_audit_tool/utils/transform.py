@@ -18,35 +18,55 @@ def apply_preprocessing(
                 st.warning(f"⚠️ `{col}` not found. Skipping.")
             continue
 
+        methods = rec.split(" + ")
+
+        # 🔹 Drop entire column
+        if "DropColumn" in methods:
+            df_processed.drop(columns=[col], inplace=True)
+            if show_logs:
+                st.info(f"🗑️ `{col}` dropped (DropColumn).")
+            continue
+
+        # 🔹 Drop rows with too many NaNs
+        if "DropHighNaNs" in methods:
+            df_processed.drop(columns=[col], inplace=True)
+            if show_logs:
+                st.warning(
+                    f"🗑️ `{col}` dropped due to ≥95% missing values "
+                    "(DropHighNaNs)."
+                )
+            continue
+
+        # 🔹 Imputation
+        if any("Impute" in m for m in methods):
+            if df_processed[col].dtype == "object":
+                mode_series = df_processed[col].mode(dropna=True)
+                if not mode_series.empty:
+                    fill_val = mode_series[0]
+                else:
+                    fill_val = "missing_fallback"
+                    if show_logs:
+                        st.warning(
+                            f"⚠️ `{col}` has no mode. Using fallback value: "
+                            f"'{fill_val}'"
+                        )
+            else:
+                fill_val = df_processed[col].median()
+            df_processed[col] = (
+                df_processed[col].fillna(fill_val).infer_objects(copy=False)
+            )
+            if show_logs:
+                st.info(f"🧩 Imputed missing in `{col}` with `{fill_val}`.")
+
+        # 🔹 Encoding and Transformations
         try:
-            method = rec.split(" + ")[0]
-
-            # Handle missing values
-            if "DropHighNaNs" in rec:
-                df_processed = df_processed[df_processed[col].notna()]
-                if show_logs:
-                    st.warning(f"🗑️ Dropped rows with NaNs in `{col}`")
-
-            elif "ImputeMissing" in rec:
-                fill_val = (
-                    df_processed[col].mode()[0]
-                    if df_processed[col].dtype == "object"
-                    else df_processed[col].median()
-                )
-                df_processed[col] = (
-                    df_processed[col].fillna(fill_val).infer_objects(copy=False)
-                )
-                if show_logs:
-                    st.info(f"🧩 Imputed missing in `{col}` with `{fill_val}`")
-
-            # Apply transformation
-            if method == "OneHotEncoder":
+            if "OneHotEncoder" in methods:
                 unique_count = df_processed[col].nunique()
                 if unique_count > 50:
                     if show_logs:
                         st.warning(
                             f"⚠️ `{col}` has {unique_count} unique values. "
-                            f"Skipped OneHotEncoder."
+                            "Skipped OneHotEncoder."
                         )
                     continue
                 dummies = pd.get_dummies(df_processed[col], prefix=col)
@@ -57,7 +77,7 @@ def apply_preprocessing(
                         f"✅ `{col}` encoded (OneHot, {dummies.shape[1]} columns)."
                     )
 
-            elif method == "LabelEncoder":
+            elif "LabelEncoder" in methods:
                 df_processed[col] = (
                     df_processed[col].fillna("missing_label").astype(str)
                 )
@@ -69,50 +89,25 @@ def apply_preprocessing(
                         f"(missing → 'missing_label')."
                     )
 
-            elif method == "MinMaxScaler":
+            elif "MinMaxScaler" in methods:
                 scaler = MinMaxScaler()
                 df_processed[col] = scaler.fit_transform(df_processed[[col]])
                 if show_logs:
                     st.success(f"✅ `{col}` scaled (MinMaxScaler).")
 
-            elif method == "Log1pTransform":
+            elif "Log1pTransform" in methods:
                 if (df_processed[col] <= -1).any():
                     if show_logs:
                         st.warning(
-                            f"⚠️ Skipping log1p for `{col}` " f"due to values ≤ -1."
+                            f"⚠️ Skipping log1p for `{col}` due to values ≤ -1."
                         )
-                    continue
-                df_processed[col] = np.log1p(df_processed[col])
-                if show_logs:
-                    st.info(f"🔁 Applied log1p transform to `{col}`")
-
-            elif method == "DropColumn":
-                df_processed.drop(columns=[col], inplace=True)
-                if show_logs:
-                    st.info(f"🗑️ `{col}` dropped.")
-
-            elif method == "MeanImpute":
-                fill_val = df_processed[col].mean()
-                df_processed[col] = (
-                    df_processed[col].fillna(fill_val).infer_objects(copy=False)
-                )
-                if show_logs:
-                    st.success(f"✅ `{col}` imputed with mean: {fill_val:.2f}")
-
-            elif method == "ModeImpute":
-                fill_val = df_processed[col].mode()[0]
-                df_processed[col] = (
-                    df_processed[col].fillna(fill_val).infer_objects(copy=False)
-                )
-                if show_logs:
-                    st.success(f"✅ `{col}` imputed with mode: {fill_val}")
-
-            else:
-                if show_logs:
-                    st.warning(f"⚠️ Unknown method `{method}` for `{col}`")
+                else:
+                    df_processed[col] = np.log1p(df_processed[col])
+                    if show_logs:
+                        st.info(f"🔁 Applied log1p transform to `{col}`.")
 
         except Exception as e:
             if show_logs:
-                st.error(f"❌ `{col}` failed with `{method}`: {e}")
+                st.error(f"❌ `{col}` failed with preprocessing step: {e}")
 
     return df_processed

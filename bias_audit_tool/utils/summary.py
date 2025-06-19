@@ -3,6 +3,17 @@ from typing import Dict
 import pandas as pd
 
 
+def basic_df_summary(df: pd.DataFrame) -> None:
+    print("🔎 df.info():")
+    print(df.info())
+
+    print("\n📊 df.describe(include='all'):")
+    print(df.describe(include="all"))
+
+    print("\n🔥 Top 30 columns with highest missing rate:")
+    print(df.isnull().mean().sort_values(ascending=False).head(30))
+
+
 def summarize_categories(
     df: pd.DataFrame, recommendations: Dict[str, str]
 ) -> pd.DataFrame:

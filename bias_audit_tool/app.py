@@ -1,5 +1,6 @@
 import os
 import sys
+import traceback
 from collections import defaultdict
 
 import pandas as pd
@@ -9,6 +10,7 @@ from sklearn.metrics import roc_auc_score
 from utils.model_selector import run_basic_modeling
 from utils.preprocess import recommend_preprocessing
 from utils.recommend_columns import identify_demographic_columns
+from utils.summary import basic_df_summary
 from utils.summary import summarize_categories
 from utils.transform import apply_preprocessing
 from visualization.visualization import show_groupwise_visualizations
@@ -41,6 +43,8 @@ def main():
                 low_memory=False,
                 na_values=["--", "NA", "N/A", "null"],
             )
+
+            basic_df_summary(df)
 
             st.success("✅ File loaded successfully")
             st.markdown("#### 📄 Original Data Preview")
@@ -173,6 +177,7 @@ def main():
 
         except Exception as e:
             st.error(f"❌ Error loading or processing the file:\n\n{e}")
+            st.text(traceback.format_exc())
     else:
         st.info("⬅️ Please upload a dataset to begin.")
 

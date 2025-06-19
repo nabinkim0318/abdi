@@ -20,7 +20,8 @@ dependencies = [
     "shap>=0.44.0",
     "jinja2>=3.1.0",
     "reportlab>=4.0.0",
-    "tabulate>=0.9.0"
+    "tabulate>=0.9.0",
+    "watchdog (>=6.0.0,<7.0.0)"
 ]
 packages = [{ include = "bias_audit_tool" }]
 

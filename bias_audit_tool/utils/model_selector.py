@@ -12,6 +12,44 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
 
+def suggest_target_candidates(df, min_ratio=0.01, max_unique=10):
+    """
+    Suggest likely target columns based on common clinical keywords and value counts.
+    """
+    target_keywords = ["status", "diagnosis", "outcome", "recurrence", "death"]
+    candidates = []
+
+    for col in df.columns:
+        if df[col].dtype == "object" or str(df[col].dtype).startswith("int"):
+            nunique = df[col].nunique()
+            if nunique <= max_unique:
+                lower_col = col.lower()
+                if any(key in lower_col for key in target_keywords):
+                    nonnull_ratio = df[col].notnull().mean()
+                    if nonnull_ratio >= min_ratio:
+                        candidates.append((col, nunique, nonnull_ratio))
+
+    return pd.DataFrame(
+        candidates, columns=["Column", "Unique Values", "Non-null Ratio"]
+    )
+
+
+"""
+candidates = suggest_target_candidates(df)
+if not candidates.empty:
+    print("💡 Suggested target label candidates:")
+    print(candidates)
+
+# 예시: 가장 위의 타겟을 사용
+target_col = candidates.iloc[0]["Column"]
+features = df.drop(columns=[target_col])
+target = df[target_col]
+
+result = run_basic_modeling(features, target)
+print(result["report"])
+"""
+
+
 def select_model(X, y):
     if y.nunique() == 2:
         return LogisticRegression(max_iter=1000)
