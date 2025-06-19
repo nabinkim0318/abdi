@@ -49,6 +49,25 @@ def main():
             st.dataframe(df.head())
 
             # 🔹 Preprocessing recommendations
+            st.markdown("### 🧠 Recommended Preprocessing")
+            recommendations = recommend_preprocessing(df)
+
+            with st.expander("📋 Show Detailed Column Recommendations"):
+                grouped_recs = defaultdict(list)
+                for col, rec in recommendations.items():
+                    category = col.split(".")[0] if "." in col else "project"
+                    grouped_recs[category].append((col, rec))
+
+                for category, items in grouped_recs.items():
+                    with st.expander(f"📁 {category}"):
+                        for col, rec in items:
+                            st.markdown(f"🔧 **{col}** → _{rec}_")
+
+            # 🔹 Category summary table
+            summary_df = summarize_categories(df, recommendations)
+            st.markdown("### 📊 Preprocessing Recommendation Summary")
+            st.dataframe(summary_df, use_container_width=True)
+
             st.markdown("### ⚙️ Preprocessing Options")
 
             enable_scaling = st.checkbox(
@@ -71,25 +90,6 @@ def main():
                 help="Impute missing numeric values with mean, "
                 "categorical with mode. Drop columns with >95% missing.",
             )
-
-            st.markdown("### 🧠 Recommended Preprocessing")
-            recommendations = recommend_preprocessing(df)
-
-            with st.expander("📋 Show Detailed Column Recommendations"):
-                grouped_recs = defaultdict(list)
-                for col, rec in recommendations.items():
-                    category = col.split(".")[0] if "." in col else "project"
-                    grouped_recs[category].append((col, rec))
-
-                for category, items in grouped_recs.items():
-                    with st.expander(f"📁 {category}"):
-                        for col, rec in items:
-                            st.markdown(f"🔧 **{col}** → _{rec}_")
-
-            # 🔹 Category summary table
-            summary_df = summarize_categories(df, recommendations)
-            st.markdown("### 📊 Preprocessing Recommendation Summary")
-            st.dataframe(summary_df, use_container_width=True)
 
             # 🔹 Apply preprocessing
             show_logs = st.checkbox(
