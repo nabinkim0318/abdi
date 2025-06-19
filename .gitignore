@@ -1,0 +1,60 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Python packaging
+*.egg-info/
+build/
+dist/
+__pypackages__/
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Testing
+.pytest_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# Type checkers
+.pyre/
+
+# Streamlit
+.streamlit/
+logs/
+
+# IDEs
+.idea/
+.vscode/
+*.code-workspace
+
+# macOS
+.DS_Store
+
+# Secrets
+.env
+.env.*
+
+# Reports / Outputs
+*.pdf
+*.html
+output/
+sample_data/*.csv
