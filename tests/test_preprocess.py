@@ -27,4 +27,7 @@ def test_recommend_preprocessing_object_numeric_nan():
 
     assert recommendations["category"] == "OneHotEncoder + ImputeMissing"
     assert recommendations["numeric"] == "MinMaxScaler"
-    assert recommendations["mostly_nan"] == "LabelEncoder + DropHighNaNs"
+    assert (
+        recommendations["mostly_nan"]
+        == "LabelEncoder + ImputeMissing + ⚠️ ConsiderDropping"
+    )
