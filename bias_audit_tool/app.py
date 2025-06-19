@@ -26,10 +26,8 @@ st.set_page_config(page_title="Bias Audit Tool", layout="wide")
 st.sidebar.title("📊 Bias Audit Assistant")
 uploaded_file = st.sidebar.file_uploader("### 1️⃣ Upload Dataset", type="csv")
 
-enable_scaling = st.sidebar.checkbox("🔧 Apply Scaling")
-enable_encoding = st.sidebar.checkbox("🔧 Encode Categorical Columns")
 enable_modeling = st.sidebar.radio("🤖 Run ML Model?", ["No", "Yes"])
-export_btn = st.sidebar.button("📤 Export PDF Report")
+
 
 # ===== Main Panel =====
 st.title("🧪 Bias Audit Dashboard")
@@ -51,6 +49,29 @@ def main():
             st.dataframe(df.head())
 
             # 🔹 Preprocessing recommendations
+            st.markdown("### ⚙️ Preprocessing Options")
+
+            enable_scaling = st.checkbox(
+                "🔧 Apply Scaling to numeric columns (MinMaxScaler)",
+                value=True,
+                help="Rescales numeric features between 0 and 1. "
+                "Recommended for ML modeling.",
+            )
+
+            enable_encoding = st.checkbox(
+                "🔧 Encode categorical columns",
+                value=True,
+                help="Converts text columns into numeric format "
+                "(e.g., OneHot or Label encoding).",
+            )
+
+            handle_missing = st.checkbox(
+                "🧩 Handle missing values automatically",
+                value=True,
+                help="Impute missing numeric values with mean, "
+                "categorical with mode. Drop columns with >95% missing.",
+            )
+
             st.markdown("### 🧠 Recommended Preprocessing")
             recommendations = recommend_preprocessing(df)
 
@@ -77,6 +98,11 @@ def main():
             )
 
             if st.button("🚀 Apply Recommended Preprocessing"):
+                st.caption(
+                    f"🔧 Applied options: Scaling = {enable_scaling}, "
+                    f"Encoding = {enable_encoding}, "
+                    f"Missing Handling = {handle_missing}"
+                )
                 orig_shape = df.shape
                 df_proc = apply_preprocessing(df, recommendations, show_logs)
                 st.write(
@@ -99,7 +125,9 @@ def main():
                     default=demographic_candidates,
                 )
 
+                target_col = None
                 if selected_demo_cols:
+
                     st.markdown("### 👥 Demographic Group-wise Analysis")
                     target_col = st.selectbox(
                         "🎯 Select Target Column (Optional)", df_proc.columns
@@ -119,7 +147,7 @@ def main():
 
                 # 🔹 Select columns for audit
                 audit_cols = st.sidebar.multiselect(
-                    "### 3️⃣ Select Columns for Audit", df.columns
+                    "### 3️⃣ Select Columns for Audit", df_proc.columns
                 )
                 if audit_cols:
                     st.markdown("### 📌 Preprocessing Options (Manual Override)")
@@ -140,16 +168,27 @@ def main():
                     st.markdown("### 📊 Visualizations")
                     show_visualizations(df_proc, audit_cols)
 
-                    if export_btn and df_proc is not None and audit_cols:
-                        pdf_buffer = generate_pdf_report(
-                            df_proc, audit_cols, recommendations
-                        )
-                        st.download_button(
-                            "📥 Download PDF Report",
-                            pdf_buffer,
-                            "bias_audit_report.pdf",
-                            mime="application/pdf",
-                        )
+                    st.markdown("### 📥 Export Report")
+                    st.caption(
+                        "Download a detailed PDF report of the selected audit "
+                        "columns."
+                    )
+                    if st.button("📤 Export PDF Report"):
+                        if df_proc is not None and audit_cols:
+                            pdf_buffer = generate_pdf_report(
+                                df_proc, audit_cols, recommendations
+                            )
+                            st.download_button(
+                                "📥 Download PDF Report",
+                                pdf_buffer,
+                                "bias_audit_report.pdf",
+                                mime="application/pdf",
+                            )
+                        else:
+                            st.warning(
+                                "⚠️ Please select columns and apply "
+                                "preprocessing first."
+                            )
 
                 else:
                     st.info(
@@ -177,7 +216,8 @@ def main():
 
         except Exception as e:
             st.error(f"❌ Error loading or processing the file:\n\n{e}")
-            st.text(traceback.format_exc())
+            with st.expander("🔍 Show full error details"):
+                st.text(traceback.format_exc())
     else:
         st.info("⬅️ Please upload a dataset to begin.")
 

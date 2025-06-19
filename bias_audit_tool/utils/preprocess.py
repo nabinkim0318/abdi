@@ -6,7 +6,7 @@ from pandas.api.types import is_object_dtype
 from scipy.stats import skew
 
 
-def recommend_preprocessing(df: pd.DataFrame) -> dict:
+def recommend_preprocessing(df):
     """
     Recommend preprocessing strategy for each column.
 
