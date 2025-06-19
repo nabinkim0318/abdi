@@ -5,11 +5,13 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 import streamlit as st
+from report.report_generator import generate_pdf_report
 from utils.preprocess import recommend_preprocessing
 from utils.summary import summarize_categories
 from utils.transform import apply_preprocessing
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+
 
 st.set_page_config(page_title="Bias Audit Tool", layout="wide")
 
@@ -85,10 +87,18 @@ def main():
             )
 
             if st.button("🚀 Apply Recommended Preprocessing"):
-                df_processed = apply_preprocessing(df, recommendations, show_logs)
+                df_proc = apply_preprocessing(df, recommendations, show_logs)
                 st.success("✅ Preprocessing Applied!")
-                st.markdown("#### ✅ Processed Data Preview")
-                st.dataframe(df_processed.head())
+                st.dataframe(df_proc.head())
+
+                # 📥 Download processed CSV
+                csv_buffer = df_proc.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    "⬇️ Download Processed Data",
+                    csv_buffer,
+                    "processed_data.csv",
+                    "text/csv",
+                )
 
                 # 🔹 Select columns for audit
                 audit_cols = st.sidebar.multiselect(
@@ -111,7 +121,19 @@ def main():
 
                     # 🔹 Visualization
                     st.markdown("### 📊 Visualizations")
-                    show_visualizations(df_processed, audit_cols)
+                    show_visualizations(df_proc, audit_cols)
+
+                    if export_btn and df_proc is not None and audit_cols:
+                        buffer = generate_pdf_report(
+                            df_proc, audit_cols, recommendations
+                        )
+                        st.download_button(
+                            "📥 Download PDF Report",
+                            buffer,
+                            "bias_audit_report.pdf",
+                            mime="application/pdf",
+                        )
+
                 else:
                     st.info(
                         "⬅️ Select columns from the "
