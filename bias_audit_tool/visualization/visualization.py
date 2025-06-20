@@ -5,6 +5,24 @@ import streamlit as st
 
 
 def show_visualizations(df, audit_cols):
+    """
+    Display various visualizations for auditing selected columns.
+
+    For each column in `audit_cols`, renders:
+        - Count plot (for categorical features)
+        - Histogram + KDE (for numerical features)
+        - Boxplot (for numerical features)
+
+    Additionally shows:
+        - Heatmap of missing values across all columns
+
+    Args:
+        df (pd.DataFrame): The input DataFrame to visualize.
+        audit_cols (list[str]): List of column names to audit visually.
+
+    Displays:
+        Streamlit-rendered visual plots for each column.
+    """
     sns.set_theme(style="whitegrid", palette="pastel")
 
     for col in audit_cols:
@@ -60,6 +78,24 @@ def show_visualizations(df, audit_cols):
 
 
 def show_groupwise_visualizations(df, demo_cols, target_col=None):
+    """
+    Display visualizations of target distribution across demographic groups.
+
+    For each demographic column:
+        - If numeric and high cardinality, bins values into intervals.
+        - If `target_col` is numeric, shows a boxplot by group.
+        - If `target_col` is categorical, shows countplot by group.
+        - If no `target_col`, shows overall distribution of the demographic column.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame.
+        demo_cols (list[str]): List of demographic columns for group-wise analysis.
+        target_col (str, optional): Target variable to plot
+                                    against groups (default is None).
+
+    Displays:
+        Streamlit-rendered visualizations per demographic column.
+    """
     sns.set_theme(style="whitegrid", palette="pastel")
 
     for col in demo_cols:
