@@ -28,6 +28,7 @@ Run the Streamlit app
 poetry run streamlit run bias_audit_tool/app.py
 
 📁 Project Structure
+```bash
 bias_audit_tool/
 ├── app.py                         # Main Streamlit entry point
 ├── data/
@@ -63,4 +64,4 @@ pyproject.toml                     # Project dependencies and build settings
 requirements.txt                   # Plain dependency list (optional)
 README.md                          # This file
 LICENSE                            # MIT License
-
+'''
