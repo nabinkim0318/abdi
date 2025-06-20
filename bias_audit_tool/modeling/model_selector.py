@@ -14,7 +14,16 @@ from sklearn.preprocessing import LabelEncoder
 
 def suggest_target_candidates(df, min_ratio=0.01, max_unique=10):
     """
-    Suggest likely target columns based on common clinical keywords and value counts.
+    Suggest candidate target columns based on common medical-related keywords
+    and column properties like cardinality and missing values.
+
+    Args:
+        df (pd.DataFrame): Input dataset.
+        min_ratio (float): Minimum ratio of non-null values required.
+        max_unique (int): Maximum number of unique values allowed.
+
+    Returns:
+        pd.DataFrame: List of column candidates with stats.
     """
     target_keywords = ["status", "diagnosis", "outcome", "recurrence", "death"]
     candidates = []
@@ -51,6 +60,16 @@ print(result["report"])
 
 
 def select_model(X, y):
+    """
+    Select a model based on the number of target classes.
+
+    Args:
+        X (pd.DataFrame): Feature matrix.
+        y (pd.Series): Target variable.
+
+    Returns:
+        sklearn.base.BaseEstimator: A scikit-learn model instance.
+    """
     if y.nunique() == 2:
         return LogisticRegression(max_iter=1000)
     else:
@@ -58,6 +77,18 @@ def select_model(X, y):
 
 
 def run_basic_modeling(X, y, show_plots=True):
+    """
+    Run a simple modeling pipeline including training, evaluation, and visualization.
+
+    Args:
+        X (pd.DataFrame): Feature matrix.
+        y (pd.Series): Target labels.
+        show_plots (bool): Whether to display confusion matrix and ROC curve.
+
+    Returns:
+        dict: Dictionary containing the model, evaluation report,
+              predictions, and optional probability scores.
+    """
     # Handle non-numeric targets
     if y.dtype == "object" or isinstance(y.iloc[0], str):
         le = LabelEncoder()

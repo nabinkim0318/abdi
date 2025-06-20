@@ -6,6 +6,22 @@ from preprocessing.summary import basic_df_summary
 
 
 def load_and_preview_data(uploaded_file):
+    """
+    Loads a CSV file, displays a basic summary and data preview in Streamlit,
+    and handles any errors gracefully.
+
+    Args:
+        uploaded_file (UploadedFile): The uploaded CSV file via
+        Streamlit file uploader.
+
+    Returns:
+        pd.DataFrame or None: Returns the loaded DataFrame if successful,
+        otherwise None.
+
+    Side Effects:
+        - Displays success message and data preview in the Streamlit app.
+        - Displays error message and traceback if an exception occurs.
+    """
     try:
         df = pd.read_csv(
             uploaded_file, low_memory=False, na_values=["--", "NA", "N/A", "null"]
