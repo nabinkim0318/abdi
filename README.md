@@ -16,7 +16,7 @@ A modular and interactive tool for auditing bias and fairness in machine learnin
 
 ## 🛠️ Installation
 ### 1. Clone the repository
-```bash 
+```bash
 git clone https://github.com/nabinkim0318/abdi.git
 cd abdi
 ```
@@ -63,7 +63,7 @@ bias_audit_tool/
 ├── stats/
 │   └── stats_analysis.py          # Statistical testing utilities
 ├── utils/
-│   └── ui_helpers.py              # Streamlit helper components and layout logic
+│   └── ui_helpers.py              # Streamlit helper components and layout logics
 ├── visualization/
 │   ├── ui_blocks.py               # Modular Streamlit UI blocks
 │   └── visualization.py           # Charts and visualization functions
