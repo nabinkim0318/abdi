@@ -112,6 +112,14 @@ def interpret_permutation_importance(col: str) -> str:
     )
 
 
+def interpret_groupwise_missing(col, group, rate):
+    return (
+        f"The `{col}` column has a missing rate of "
+        f"{rate:.1%} in the `{group}` group. "
+        "This could bias model performance."
+    )
+
+
 def interpret_summary(
     n_columns: int,
     n_flagged: int,
