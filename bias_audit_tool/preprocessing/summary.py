@@ -4,6 +4,17 @@ import pandas as pd
 
 
 def basic_df_summary(df: pd.DataFrame) -> None:
+    """
+    Print basic summary statistics of a DataFrame.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame to be summarized.
+
+    Displays:
+        - DataFrame info (column types, non-null counts)
+        - Descriptive statistics for all columns
+        - Top 30 columns with the highest missing value ratios
+    """
     print("🔎 df.info():")
     print(df.info())
 
@@ -18,17 +29,23 @@ def summarize_categories(
     df: pd.DataFrame, recommendations: Dict[str, str]
 ) -> pd.DataFrame:
     """
-    Summarize preprocessing recommendations by category (e.g., 'cases', 'diagnoses').
+    Summarize preprocessing recommendations by logical category
+        (e.g., 'cases', 'diagnoses').
 
-    Returns a summary DataFrame with:
-    - Category name
-    - Number of columns
-    - Columns recommended for removal
-    - Average NaN %
-    - OneHotEncoder recommended count
-    - Numeric transformation recommended count
+    Args:
+        df (pd.DataFrame): The original dataset.
+        recommendations (Dict[str, str]): A dictionary mapping column
+            names to preprocessing recommendations.
+
+    Returns:
+        pd.DataFrame: A summary table containing the following columns:
+            - Category: Top-level group derived from column name prefix.
+            - Columns: Total number of columns in that category.
+            - Drop Recommended: Count of columns flagged for removal.
+            - Avg. NaN %: Average percentage of missing values.
+            - OneHot Recommended: Count of columns recommended for one-hot encoding.
+            - Numeric Transform: Count of columns needing numeric transformation.
     """
-
     summary = {}
 
     for col, rec in recommendations.items():
