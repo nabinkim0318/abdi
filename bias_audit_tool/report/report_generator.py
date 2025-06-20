@@ -2,12 +2,12 @@ import io
 
 import matplotlib.pyplot as plt
 import seaborn as sns
+from modeling.interpretation import generate_interpretation
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
-from utils.interpretation import generate_interpretation
-from utils.stats_analysis import run_anova
-from utils.stats_analysis import run_chi_square
+from stats.stats_analysis import run_anova
+from stats.stats_analysis import run_chi_square
 
 
 def generate_pdf_report(df_proc, audit_cols, recommendations, group_col="race"):

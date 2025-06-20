@@ -2,12 +2,12 @@ import traceback
 from collections import defaultdict
 
 import streamlit as st
+from modeling.fairness import compute_fairness_metrics
+from modeling.model_selector import run_basic_modeling
+from preprocessing.preprocess import recommend_preprocessing
+from preprocessing.summary import summarize_categories
+from preprocessing.transform import apply_preprocessing
 from sklearn.metrics import roc_auc_score
-from utils.fairness import compute_fairness_metrics
-from utils.model_selector import run_basic_modeling
-from utils.preprocess import recommend_preprocessing
-from utils.summary import summarize_categories
-from utils.transform import apply_preprocessing
 
 
 def display_preprocessing_recommendations(df):

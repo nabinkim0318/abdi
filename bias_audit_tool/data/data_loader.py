@@ -2,7 +2,7 @@ import traceback
 
 import pandas as pd
 import streamlit as st
-from utils.summary import basic_df_summary
+from preprocessing.summary import basic_df_summary
 
 
 def load_and_preview_data(uploaded_file):

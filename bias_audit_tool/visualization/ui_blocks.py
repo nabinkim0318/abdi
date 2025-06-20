@@ -1,6 +1,6 @@
 import streamlit as st
+from preprocessing.recommend_columns import identify_demographic_columns
 from report.report_generator import generate_pdf_report
-from utils.recommend_columns import identify_demographic_columns
 from visualization.visualization import show_groupwise_visualizations
 from visualization.visualization import show_visualizations
 
