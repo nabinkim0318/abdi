@@ -11,6 +11,30 @@ from stats.stats_analysis import run_chi_square
 
 
 def generate_pdf_report(df_proc, audit_cols, recommendations, group_col="race"):
+    """
+    Generate a PDF bias audit report including preprocessing suggestions,
+    statistical interpretations, and visualizations.
+
+    Args:
+        df_proc (pd.DataFrame): The preprocessed DataFrame.
+        audit_cols (list[str]): List of columns to audit for statistical
+            differences and bias.
+        recommendations (dict): Preprocessing strategies for each column.
+        group_col (str, optional): Demographic grouping column used for comparison
+            (e.g., 'race', 'gender'). Defaults to "race".
+
+    Returns:
+        io.BytesIO: A buffer containing the generated PDF report.
+
+    Notes:
+        - Preprocessing recommendations are listed per column.
+        - Statistical tests:
+            * Chi-square for categorical features (≤10 unique values)
+            * ANOVA for continuous/numeric features
+        - Distributions are visualized using histograms with KDE overlay.
+        - Automatic pagination is handled when space is insufficient on
+          the current page.
+    """
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter

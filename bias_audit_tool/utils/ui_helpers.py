@@ -11,6 +11,15 @@ from sklearn.metrics import roc_auc_score
 
 
 def display_preprocessing_recommendations(df):
+    """
+    Display preprocessing recommendations in the Streamlit interface.
+
+    Args:
+        df (pd.DataFrame): The original input DataFrame.
+
+    Returns:
+        dict: Dictionary mapping column names to recommended preprocessing steps.
+    """
     st.markdown("### 🧠 Recommended Preprocessing")
     recommendations = recommend_preprocessing(df)
 
@@ -33,6 +42,13 @@ def display_preprocessing_recommendations(df):
 
 
 def get_user_preprocessing_options():
+    """
+    Render checkboxes for user-selected preprocessing options in Streamlit.
+
+    Returns:
+        tuple: Boolean flags for (enable_scaling,
+               enable_encoding, handle_missing).
+    """
     st.markdown("### ⚙️ Preprocessing Options")
 
     enable_scaling = st.checkbox(
@@ -66,6 +82,14 @@ def get_user_preprocessing_options():
 
 
 def show_selected_options(enable_scaling, enable_encoding, handle_missing):
+    """
+    Display the currently selected preprocessing options as a summary caption.
+
+    Args:
+        enable_scaling (bool): Whether to apply scaling.
+        enable_encoding (bool): Whether to apply encoding.
+        handle_missing (bool): Whether to handle missing values.
+    """
     st.caption(
         f"🔧 Applied options: Scaling = {enable_scaling}, "
         f"Encoding = {enable_encoding}, "
@@ -74,6 +98,17 @@ def show_selected_options(enable_scaling, enable_encoding, handle_missing):
 
 
 def execute_preprocessing(df, recommendations, show_logs=False):
+    """
+    Apply preprocessing pipeline and display results.
+
+    Args:
+        df (pd.DataFrame): Original input DataFrame.
+        recommendations (dict): Preprocessing actions for each column.
+        show_logs (bool): Whether to show detailed logs of each step.
+
+    Returns:
+        pd.DataFrame: Preprocessed DataFrame.
+    """
     df_proc = apply_preprocessing(df, recommendations, show_logs)
     st.write(f"🔄 Data shape changed from `{df.shape}` → `{df_proc.shape}`")
     st.success("✅ Preprocessing Applied!")
@@ -82,6 +117,19 @@ def execute_preprocessing(df, recommendations, show_logs=False):
 
 
 def apply_preprocessing_and_display(df, recommendations, show_logs, options):
+    """
+    Wrapper function that applies preprocessing with user-selected options.
+
+    Args:
+        df (pd.DataFrame): Original input DataFrame.
+        recommendations (dict): Preprocessing actions per column.
+        show_logs (bool): Whether to display log messages.
+        options (tuple): Tuple of booleans (enable_scaling,
+        enable_encoding, handle_missing).
+
+    Returns:
+        pd.DataFrame: Transformed DataFrame after preprocessing.
+    """
     enable_scaling, enable_encoding, handle_missing = options
     show_selected_options(enable_scaling, enable_encoding, handle_missing)
     df_proc = execute_preprocessing(df, recommendations, show_logs)
@@ -90,12 +138,18 @@ def apply_preprocessing_and_display(df, recommendations, show_logs, options):
 
 def run_modeling_and_fairness(df_proc, target_col, selected_demo_cols):
     """
-    Run machine learning modeling and fairness audit with Streamlit UI.
+    Run basic ML modeling and fairness evaluation with Streamlit UI.
 
     Args:
-        df_proc (pd.DataFrame): Preprocessed DataFrame
-        target_col (str): Name of the target column
-        selected_demo_cols (list[str]): List of sensitive attributes
+        df_proc (pd.DataFrame): Preprocessed DataFrame used for training.
+        target_col (str): Name of the target variable column.
+        selected_demo_cols (list[str]): List of sensitive attributes for
+                                        fairness audit.
+
+    Displays:
+        - Classification report
+        - ROC AUC score (if available)
+        - Fairness metrics and disparity summary by group
     """
     st.markdown("## 🧠 Machine Learning Modeling")
 
