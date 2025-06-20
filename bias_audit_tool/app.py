@@ -1,6 +1,5 @@
 # bias_audit_tool/app.py
 import streamlit as st
-from utils.data_loader import load_and_preview_data
 from utils.ui_helpers import apply_preprocessing_and_display
 from utils.ui_helpers import display_preprocessing_recommendations
 from utils.ui_helpers import get_user_preprocessing_options
@@ -8,6 +7,8 @@ from utils.ui_helpers import run_modeling_and_fairness
 from visualization.ui_blocks import audit_and_visualize
 from visualization.ui_blocks import download_processed_csv
 from visualization.ui_blocks import show_demographic_analysis
+
+from bias_audit_tool.data.data_loader import load_and_preview_data
 
 
 st.set_page_config(page_title="Bias Audit Tool", layout="wide")
