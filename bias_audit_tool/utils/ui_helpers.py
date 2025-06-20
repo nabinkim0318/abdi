@@ -1,6 +1,10 @@
+import traceback
 from collections import defaultdict
 
 import streamlit as st
+from sklearn.metrics import roc_auc_score
+from utils.fairness import compute_fairness_metrics
+from utils.model_selector import run_basic_modeling
 from utils.preprocess import recommend_preprocessing
 from utils.summary import summarize_categories
 from utils.transform import apply_preprocessing
@@ -80,9 +84,56 @@ def execute_preprocessing(df, recommendations, show_logs=False):
 def apply_preprocessing_and_display(df, recommendations, show_logs, options):
     enable_scaling, enable_encoding, handle_missing = options
     show_selected_options(enable_scaling, enable_encoding, handle_missing)
-    orig_shape = df.shape
     df_proc = execute_preprocessing(df, recommendations, show_logs)
-    st.write(f"🔄 Data shape changed from `{orig_shape}` → `{df_proc.shape}`")
-    st.success("✅ Preprocessing Applied!")
-    st.dataframe(df_proc.head())
     return df_proc
+
+
+def run_modeling_and_fairness(df_proc, target_col, selected_demo_cols):
+    """
+    Run machine learning modeling and fairness audit with Streamlit UI.
+
+    Args:
+        df_proc (pd.DataFrame): Preprocessed DataFrame
+        target_col (str): Name of the target column
+        selected_demo_cols (list[str]): List of sensitive attributes
+    """
+    st.markdown("## 🧠 Machine Learning Modeling")
+
+    X = df_proc.drop(columns=[target_col])
+    y = df_proc[target_col]
+
+    try:
+        results = run_basic_modeling(X, y)
+
+        st.markdown("### 🔍 Classification Report")
+        st.dataframe(results["report"])
+
+        if results["y_prob"] is not None:
+            auc = roc_auc_score(results["y_test"], results["y_prob"])
+            st.markdown(f"📈 ROC AUC: `{auc:.2f}`")
+
+        if selected_demo_cols:
+            st.markdown("### ⚖️ Fairness Audit with `fairlearn`")
+            for attr in selected_demo_cols:
+                st.markdown(f"#### Sensitive Attribute: `{attr}`")
+
+                try:
+                    metric_frame, fairness_summary = compute_fairness_metrics(
+                        y_true=results["y_test"],
+                        y_pred=results["y_pred"],
+                        sensitive_features=X[attr].loc[results["y_test"].index],
+                    )
+
+                    st.markdown("📊 Group-wise Metrics")
+                    st.dataframe(metric_frame.by_group)
+
+                    st.markdown("🧾 Summary of Fairness Disparities")
+                    for key, value in fairness_summary.items():
+                        st.markdown(f"- **{key}**: `{value:.4f}`")
+
+                except Exception as e:
+                    st.warning(f"Could not compute fairness for `{attr}`: {e}")
+
+    except Exception:
+        st.error("❌ Modeling failed.")
+        st.text(traceback.format_exc())

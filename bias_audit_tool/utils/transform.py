@@ -52,11 +52,13 @@ def apply_preprocessing(
                         )
             else:
                 fill_val = df_processed[col].median()
-            df_processed[col] = (
-                df_processed[col].fillna(fill_val).infer_objects(copy=False)
-            )
-            if show_logs:
-                st.info(f"🧩 Imputed missing in `{col}` with `{fill_val}`.")
+            try:
+                filled = df_processed[col].fillna(fill_val)
+                df_processed[col] = filled.infer_objects(copy=False)
+            except Exception as e:
+                df_processed[col] = df_processed[col].fillna(fill_val)
+                if show_logs:
+                    st.warning(f"⚠️ Infer failed for `{col}`: {e}")
 
         # 🔹 Encoding and Transformations
         try:

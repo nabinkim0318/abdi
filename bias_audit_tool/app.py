@@ -1,13 +1,10 @@
 # bias_audit_tool/app.py
-import traceback
-
 import streamlit as st
-from sklearn.metrics import roc_auc_score
 from utils.data_loader import load_and_preview_data
-from utils.model_selector import run_basic_modeling
 from utils.ui_helpers import apply_preprocessing_and_display
 from utils.ui_helpers import display_preprocessing_recommendations
 from utils.ui_helpers import get_user_preprocessing_options
+from utils.ui_helpers import run_modeling_and_fairness
 from visualization.ui_blocks import audit_and_visualize
 from visualization.ui_blocks import download_processed_csv
 from visualization.ui_blocks import show_demographic_analysis
@@ -67,31 +64,18 @@ def main():
 
         # 🔹 Modeling
         if enable_modeling == "Yes" and target_col:
-            st.markdown("## 🧠 Machine Learning Modeling")
-
-            X = df_proc.drop(columns=[target_col])
-            y = df_proc[target_col]
-            try:
-                results = run_basic_modeling(X, y)
-
-                st.markdown("### 🔍 Classification Report")
-                st.dataframe(results["report"])
-
-                if results["y_prob"] is not None:
-                    st.markdown(
-                        "📈 ROC AUC: {:.2f}".format(
-                            roc_auc_score(results["y_test"], results["y_prob"])
-                        )
-                    )
-            except Exception:
-                st.error("❌ Modeling failed.")
-                st.text(traceback.format_exc())
-                return
+            run_modeling_and_fairness(df_proc, target_col, selected_demo_cols)
         else:
             st.info("🚀 Please apply preprocessing to enable audit.")
     else:
         st.info("⬅️ Please upload a dataset to begin.")
 
+
+# metric_frame, summary = compute_fairness_metrics(
+#     y_true=results["y_test"],
+#     y_pred=results["y_pred"],
+#     sensitive_features=X[attr].loc[results["y_test"].index]
+# )
 
 if __name__ == "__main__":
     main()
