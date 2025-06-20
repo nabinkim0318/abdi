@@ -12,16 +12,35 @@ from sklearn.metrics import recall_score
 
 def compute_fairness_metrics(y_true, y_pred, sensitive_features):
     """
-    Compute fairness metrics by group (e.g., TPR, FPR, accuracy)
+    Compute group-wise performance and fairness metrics for model predictions.
+
+    This function calculates standard classification metrics (accuracy, precision,
+    recall, F1) and fairness-specific metrics (selection rate, demographic
+    parity difference,
+    and equalized odds difference) across groups defined by sensitive features.
 
     Args:
-        y_true (array-like): actual label
-        y_pred (array-like): predicted label
-        sensitive_features (array-like): sensitive features (e.g., sex, race)
+        y_true (array-like): Ground truth (actual) labels.
+        y_pred (array-like): Predicted labels from the classifier.
+        sensitive_features (array-like): Sensitive attribute(s) used for fairness
+        grouping (e.g., gender, race). Must be 1D and aligned with `y_true`.
 
     Returns:
-        metric_frame (MetricFrame): group-wise metric table
-        fairness_summary (dict): summary of maximum disparity between groups
+        MetricFrame: A Fairlearn MetricFrame object containing
+                     metric values per group.
+        dict: A dictionary summarizing group disparities for each metric, including:
+            - "<Metric> disparity": Maximum absolute difference across groups
+            - "Demographic Parity Difference": Difference in selection
+               rate between groups
+            - "Equalized Odds Difference": Difference in TPR/FPR across groups
+
+    Raises:
+        ValueError: If any of the inputs are misaligned or invalid.
+        Exception: Captures errors from Fairlearn fairness metrics and logs
+        as strings in summary.
+
+    Example:
+        >>> compute_fairness_metrics([1, 0, 1], [1, 1, 0], ["M", "F", "F"])
     """
 
     # 1. define metrics
