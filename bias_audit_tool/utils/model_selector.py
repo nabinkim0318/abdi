@@ -117,3 +117,13 @@ def run_basic_modeling(X, y, show_plots=True):
         "y_pred": y_pred,
         "y_prob": y_prob if y_prob is not None else None,
     }
+
+
+# Example usage (commented out):
+# result = permutation_importance(model, X_test,
+#  y_test, n_repeats=10, random_state=42)
+# importance_df = pd.DataFrame({
+#     'feature': X_test.columns,
+#     'importance_mean': result.importances_mean,
+#     'importance_std': result.importances_std
+# })

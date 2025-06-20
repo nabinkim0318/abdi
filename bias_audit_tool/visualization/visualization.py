@@ -5,7 +5,7 @@ import streamlit as st
 
 
 def show_visualizations(df, audit_cols):
-    sns.set(style="whitegrid", palette="pastel")
+    sns.set_theme(style="whitegrid", palette="pastel")
 
     for col in audit_cols:
         st.markdown(f"#### 🔍 Visualizations for `{col}`")
@@ -30,7 +30,7 @@ def show_visualizations(df, audit_cols):
             ax.set_title(f"Value Counts: {col}", fontsize=14)
             ax.set_xlabel(col, fontsize=12)
             ax.set_ylabel("Count", fontsize=12)
-            ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
+            ax.tick_params(axis="x", rotation=30)
             st.pyplot(fig)
             plt.close(fig)
 
@@ -60,7 +60,7 @@ def show_visualizations(df, audit_cols):
 
 
 def show_groupwise_visualizations(df, demo_cols, target_col=None):
-    sns.set(style="whitegrid", palette="pastel")
+    sns.set_theme(style="whitegrid", palette="pastel")
 
     for col in demo_cols:
         st.markdown(f"#### 👥 Group-wise Distribution by `{col}`")
@@ -93,7 +93,7 @@ def show_groupwise_visualizations(df, demo_cols, target_col=None):
                 fig, ax = plt.subplots(figsize=(10, 4))
                 sns.boxplot(x=x_col, y=target_col, data=df_plot, ax=ax)
                 ax.set_title(f"{target_col} by {col}", fontsize=13)
-                ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
+                ax.tick_params(axis="x", rotation=30)
                 plt.tight_layout()
                 st.pyplot(fig)
                 plt.close(fig)
@@ -101,7 +101,7 @@ def show_groupwise_visualizations(df, demo_cols, target_col=None):
                 fig, ax = plt.subplots(figsize=(10, 4))
                 sns.countplot(x=x_col, hue=target_col, data=df_plot, ax=ax)
                 ax.set_title(f"{target_col} count per {col}", fontsize=13)
-                ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
+                ax.tick_params(axis="x", rotation=30)
                 plt.tight_layout()
                 st.pyplot(fig)
                 plt.close(fig)
@@ -109,7 +109,7 @@ def show_groupwise_visualizations(df, demo_cols, target_col=None):
             fig, ax = plt.subplots(figsize=(10, 4))
             sns.countplot(x=x_col, data=df_plot, ax=ax)
             ax.set_title(f"Distribution of {col}", fontsize=13)
-            ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
+            ax.tick_params(axis="x", rotation=30)
             plt.tight_layout()
             st.pyplot(fig)
             plt.close(fig)
