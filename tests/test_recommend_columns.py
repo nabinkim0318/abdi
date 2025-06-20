@@ -1,6 +1,8 @@
 import pandas as pd
 
-from bias_audit_tool.utils.recommend_columns import identify_demographic_columns
+from bias_audit_tool.preprocessing.recommend_columns import (
+    identify_demographic_columns,
+)
 
 
 def test_identify_demographic_columns():

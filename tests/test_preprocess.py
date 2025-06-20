@@ -1,6 +1,6 @@
 import pandas as pd
 
-from bias_audit_tool.utils.preprocess import recommend_preprocessing
+from bias_audit_tool.preprocessing.preprocess import recommend_preprocessing
 
 
 def test_recommend_preprocessing_object_numeric_nan():
