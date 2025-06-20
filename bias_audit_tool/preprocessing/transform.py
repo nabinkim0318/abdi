@@ -8,6 +8,33 @@ from sklearn.preprocessing import MinMaxScaler
 def apply_preprocessing(
     df: pd.DataFrame, recommendations: dict, show_logs: bool = True
 ) -> pd.DataFrame:
+    """
+    Apply preprocessing to a DataFrame based on recommended strategies.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame to preprocess.
+        recommendations (dict): Dictionary mapping column names to preprocessing
+            strategies (e.g., "LabelEncoder + ImputeMissing").
+        show_logs (bool, optional): If True, displays preprocessing logs
+            via Streamlit. Defaults to True.
+
+    Returns:
+        pd.DataFrame: The processed DataFrame with transformations applied.
+
+    Notes:
+        - Supported strategies include:
+            * "DropColumn": Drop the column entirely.
+            * "DropHighNaNs": Drop column with ≥95% missing values.
+            * "ImputeMissing": Impute missing values (mode for object columns,
+               median for numeric).
+            * "LabelEncoder": Encode categorical values with integer labels.
+            * "OneHotEncoder": Encode categorical values using one-hot encoding.
+            * "MinMaxScaler": Scale numerical values to the [0, 1] range.
+            * "Log1pTransform": Apply log(1 + x) transformation to
+               skewed numeric columns.
+        - Skips columns with >50 unique categories for one-hot encoding.
+        - Uses `missing_label` for missing categorical values during label encoding.
+    """
     df_processed = df.copy()
     if show_logs:
         st.markdown("### 🛠️ Preprocessing Log")

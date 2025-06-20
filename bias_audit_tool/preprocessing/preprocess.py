@@ -8,11 +8,17 @@ from scipy.stats import skew
 
 def recommend_preprocessing(df):
     """
-    Recommend preprocessing strategy for each column.
+    Recommend preprocessing strategies for each column in a DataFrame.
 
-    Returns a dictionary {column_name: recommendation_string}
+    Args:
+        df (pd.DataFrame): Input dataset.
+
+    Returns:
+        dict: A dictionary mapping column names to recommended
+              preprocessing steps.
+              Recommendations include encoders, scalers, transforms,
+              and missing value handling.
     """
-
     recommendations = {}
 
     for col in df.columns:
@@ -69,6 +75,23 @@ def recommend_preprocessing(df):
 
 
 def summarize_categories(df: pd.DataFrame, recommendations: dict) -> pd.DataFrame:
+    """
+    Summarize preprocessing recommendations by column category prefix.
+
+    Args:
+        df (pd.DataFrame): Input dataset.
+        recommendations (dict): Column-wise preprocessing recommendations
+                                 returned by `recommend_preprocessing`.
+
+    Returns:
+        pd.DataFrame: A summary table containing:
+                      - Category name (based on prefix before ".")
+                      - Column count
+                      - Number of columns recommended for dropping
+                      - Average NaN percentage
+                      - One-hot encoding recommendation count
+                      - Numeric transformation recommendation count
+    """
     summary = []
 
     for prefix in sorted(set(col.split(".")[0] for col in df.columns)):
