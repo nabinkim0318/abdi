@@ -15,17 +15,18 @@ A modular and interactive tool for auditing bias and fairness in machine learnin
 ---
 
 🛠️ Installation
-Clone the repository
-
-git clone https://github.com/your-username/abdi.git
+# 1. Clone the repository
+git clone https://github.com/nabinkim0318/abdi.git
 cd abdi
-Install dependencies using Poetry
 
-poetry install
-⚠️ Make sure you have Poetry installed.
+# 2. (Optional) Install Poetry if not already installed
+curl -sSL https://install.python-poetry.org | python3 -
 
-Run the Streamlit app
-poetry run streamlit run bias_audit_tool/app.py
+# 3. Install all dependencies & set up pre-commit hooks
+make install
+
+# 4. Activate the Poetry-managed virtual environment
+make setup
 
 📁 Project Structure
 ```bash
@@ -64,4 +65,3 @@ pyproject.toml                     # Project dependencies and build settings
 requirements.txt                   # Plain dependency list (optional)
 README.md                          # This file
 LICENSE                            # MIT License
-'''
