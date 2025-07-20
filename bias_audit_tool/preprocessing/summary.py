@@ -46,6 +46,16 @@ def summarize_categories(
             - OneHot Recommended: Count of columns recommended for one-hot encoding.
             - Numeric Transform: Count of columns needing numeric transformation.
     """
+    PLAIN_COLUMN_NAMES = {
+        "Category": "Data Type (e.g., Diagnoses, Tests)",
+        "Columns": "Total Columns",
+        "Drop Recommended": "Columns Suggested for Removal (⚠️ Unused or Empty)",
+        "Avg. NaN %": "Average Missing Data (%)",
+        "OneHot Recommended": "Columns Suggested for Grouping (Group by Category)",
+        "Numeric Transform": "Columns Suggested for Numeric Adjustment "
+        "(Adjust Numbers)",
+    }
+
     summary = {}
 
     for col, rec in recommendations.items():
@@ -99,4 +109,6 @@ def summarize_categories(
             }
         )
 
-    return pd.DataFrame(summary_rows)
+    df_summary = pd.DataFrame(summary_rows)
+    df_summary.rename(columns=PLAIN_COLUMN_NAMES, inplace=True)
+    return df_summary

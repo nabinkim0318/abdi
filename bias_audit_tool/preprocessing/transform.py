@@ -80,7 +80,7 @@ def apply_preprocessing(
             else:
                 fill_val = df_processed[col].median()
             try:
-                filled = df_processed[col].fillna(fill_val)
+                filled = df_processed[col].fillna(fill_val).infer_objects(copy=False)
                 df_processed[col] = filled.infer_objects(copy=False)
             except Exception as e:
                 df_processed[col] = df_processed[col].fillna(fill_val)

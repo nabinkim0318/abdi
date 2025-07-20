@@ -25,7 +25,7 @@ test:
 # ======== App Run ========
 
 run:
-	poetry run streamlit run bias_audit_tool/app.py
+	poetry run streamlit run app.py
 
 # ======== Maintenance ========
 

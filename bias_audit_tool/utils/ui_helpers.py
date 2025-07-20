@@ -1,13 +1,13 @@
 import traceback
-from collections import defaultdict
 
 import streamlit as st
-from modeling.fairness import compute_fairness_metrics
-from modeling.model_selector import run_basic_modeling
-from preprocessing.preprocess import recommend_preprocessing
-from preprocessing.summary import summarize_categories
-from preprocessing.transform import apply_preprocessing
 from sklearn.metrics import roc_auc_score
+
+from bias_audit_tool.modeling.fairness import compute_output_fairness
+from bias_audit_tool.modeling.model_selector import run_basic_modeling
+from bias_audit_tool.preprocessing.preprocess import recommend_preprocessing
+from bias_audit_tool.preprocessing.summary import summarize_categories
+from bias_audit_tool.preprocessing.transform import apply_preprocessing
 
 
 def display_preprocessing_recommendations(df):
@@ -20,19 +20,32 @@ def display_preprocessing_recommendations(df):
     Returns:
         dict: Dictionary mapping column names to recommended preprocessing steps.
     """
-    st.markdown("### 🧠 Recommended Preprocessing")
+    st.markdown("#### 🗂️ Preprocessing Legend")
+    with st.expander("Show explanation for each preprocessing option"):
+        st.markdown(
+            """
+- **LabelEncoder**: Converts each category to a unique integer (0, 1, 2, ...).
+- **OneHotEncoder**: Creates a new binary column for each category (0 or 1).
+- **MinMaxScaler**: Scales numeric values to the range 0 to 1.
+- **Log1pTransform**: Applies log(1 + x) transformation to numeric data.
+- **ImputeMissing**: Fills missing values with the mean
+    (numeric) or mode (categorical).
+- **DropHighNaNs**: Drops columns with a high proportion of missing values.
+        """
+        )
+    # st.markdown("### 🧠 Recommended Preprocessing")
     recommendations = recommend_preprocessing(df)
 
-    with st.expander("📋 Show Detailed Column Recommendations"):
-        grouped_recs = defaultdict(list)
-        for col, rec in recommendations.items():
-            category = col.split(".")[0] if "." in col else "project"
-            grouped_recs[category].append((col, rec))
+    # with st.expander("📋 Show Detailed Column Recommendations"):
+    #     grouped_recs = defaultdict(list)
+    #     for col, rec in recommendations.items():
+    #         category = col.split(".")[0] if "." in col else "project"
+    #         grouped_recs[category].append((col, rec))
 
-        for category, items in grouped_recs.items():
-            with st.expander(f"📁 {category}"):
-                for col, rec in items:
-                    st.markdown(f"🔧 **{col}** → _{rec}_")
+    #     for category, items in grouped_recs.items():
+    #         with st.expander(f"📁 {category}"):
+    #             for col, rec in items:
+    #                 st.markdown(f"🔧 **{col}** → _{rec}_")
 
     summary_df = summarize_categories(df, recommendations)
     st.markdown("### 📊 Preprocessing Recommendation Summary")
@@ -166,13 +179,18 @@ def run_modeling_and_fairness(df_proc, target_col, selected_demo_cols):
             auc = roc_auc_score(results["y_test"], results["y_prob"])
             st.markdown(f"📈 ROC AUC: `{auc:.2f}`")
 
+        # Feature Importance
+        if "feature_importance" in results:
+            st.markdown("### 🔍 Feature Importance (Permutation)")
+            st.dataframe(results["feature_importance"].head(10))
+
         if selected_demo_cols:
             st.markdown("### ⚖️ Fairness Audit with `fairlearn`")
             for attr in selected_demo_cols:
                 st.markdown(f"#### Sensitive Attribute: `{attr}`")
 
                 try:
-                    metric_frame, fairness_summary = compute_fairness_metrics(
+                    metric_frame, fairness_summary = compute_output_fairness(
                         y_true=results["y_test"],
                         y_pred=results["y_pred"],
                         sensitive_features=X[attr].loc[results["y_test"].index],

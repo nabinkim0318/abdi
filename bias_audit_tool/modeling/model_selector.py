@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.inspection import permutation_importance
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report
 from sklearn.metrics import confusion_matrix
@@ -147,7 +148,34 @@ def run_basic_modeling(X, y, show_plots=True):
         "y_test": y_test,
         "y_pred": y_pred,
         "y_prob": y_prob if y_prob is not None else None,
+        "feature_importance": compute_feature_importance(model, X_test, y_test),
     }
+
+
+def compute_feature_importance(model, X_test, y_test):
+    """
+    Compute permutation importance for model features.
+
+    Args:
+        model: Trained model
+        X_test: Test features
+        y_test: Test targets
+
+    Returns:
+        pd.DataFrame: Feature importance scores
+    """
+    result = permutation_importance(
+        model, X_test, y_test, n_repeats=10, random_state=42
+    )
+    importance_df = pd.DataFrame(
+        {
+            "feature": X_test.columns,
+            "importance_mean": result["importances_mean"],
+            "importance_std": result["importances_std"],
+        }
+    ).sort_values("importance_mean", ascending=False)
+
+    return importance_df
 
 
 # Example usage (commented out):

@@ -11,6 +11,7 @@ __pycache__/
 build/
 dist/
 __pypackages__/
+poetry.lock
 
 # Virtual environments
 .venv/
@@ -56,5 +57,7 @@ logs/
 # Reports / Outputs
 *.pdf
 *.html
+*.csv
 output/
 sample_data/*.csv
+bias_audit_tool/sample_data/clinical_dataset_breast_cancer.csv

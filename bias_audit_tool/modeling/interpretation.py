@@ -2,7 +2,8 @@
 """
 interpretation.py
 
-Provides interpretation messages and textual explanations for statistical results,
+Provides interpretation messages and textual explanations for
+statistical results,
 data preprocessing decisions, fairness assessments, and model behavior in the
 Bias Audit Tool.
 
@@ -23,13 +24,15 @@ Functions:
     interpret_distribution_difference(col, group, pval)
     interpret_anova(col, pval)
     interpret_missing_bias(col, group, rate)
-    interpret_fairness_gap(metric_name, group1, group1_score, group2, group2_score)
+    interpret_fairness_gap(metric_name, group1, group1_score,
+        group2, group2_score)
     interpret_demographic_parity(group1, group1_score, group2, group2_score)
     interpret_fairness_warning(metric, gap, threshold)
     interpret_shap_group_diff(col, group)
     interpret_permutation_importance(col)
     interpret_groupwise_missing(col, group, rate)
-    interpret_summary(n_columns, n_flagged, col_1, col_2, group_pair, col_shap_top)
+    interpret_summary(n_columns, n_flagged, col_1, col_2, group_pair,
+        col_shap_top)
     generate_interpretation(stat_result)
 """
 
@@ -97,7 +100,8 @@ def interpret_missing(col: str, missing_rate: float) -> str:
 
 def interpret_distribution_difference(col: str, group: str, pval: float) -> str:
     """
-    Summarize statistical significance of distribution differences across groups.
+    Summarize statistical significance of distribution
+    differences across groups.
 
     Args:
         col (str): Column name.
@@ -314,7 +318,8 @@ def generate_interpretation(stat_result: dict) -> str:
     which groups show the highest or lowest values for the metric.
 
     Args:
-        stat_result (dict): Dictionary with statistical test results. Example:
+        stat_result (dict): Dictionary with statistical test results.
+        Example:
             {
                 "feature": "race",
                 "test": "chi-square",
@@ -329,8 +334,10 @@ def generate_interpretation(stat_result: dict) -> str:
             }
 
     Returns:
-        str: Human-readable message describing the statistical result,
-             indicating significance and the magnitude of group differences.
+        str: Human-readable message describing the statistical
+        result,
+             indicating significance and the magnitude of group
+             differences.
 
     Raises:
         KeyError: If required keys are missing from `stat_result`.
