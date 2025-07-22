@@ -251,7 +251,14 @@ def audit_and_visualize_fairness(df, recommendations=None):
     st.subheader("📊 Fairness Audit Results")
 
     # 1. Choose a representative demographic column
-    demographic_cols = recommend_demographic_columns(df)
+    demographic_cols_result = recommend_demographic_columns(df)
+
+    if not demographic_cols_result:
+        st.warning("⚠️ No valid demographic columns found in the dataset.")
+        return
+
+    # Filter to only include columns that exist in the DataFrame
+    demographic_cols = [col for col in demographic_cols_result if col in df.columns]
 
     if not demographic_cols:
         st.warning("⚠️ No valid demographic columns found in the dataset.")

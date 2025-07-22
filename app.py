@@ -13,7 +13,7 @@ from bias_audit_tool.visualization.ui_blocks import audit_and_visualize_fairness
 from bias_audit_tool.visualization.ui_blocks import download_processed_csv
 from bias_audit_tool.visualization.visualization import auto_group_selector
 from bias_audit_tool.visualization.visualization import plot_radar_chart
-from bias_audit_tool.visualization.visualization import show_demographic_overview
+from bias_audit_tool.visualization.visualization import show_visualizations
 
 
 st.set_page_config(page_title="Bias Audit Tool", layout="wide")
@@ -21,8 +21,6 @@ st.set_page_config(page_title="Bias Audit Tool", layout="wide")
 
 # ===== Sidebar =====
 st.sidebar.title("📊 Bias Audit Assistant")
-uploaded_file = st.sidebar.file_uploader("### 1️⃣ Upload Dataset", type="csv")
-
 enable_modeling = st.sidebar.radio("🤖 Run ML Model?", ["No", "Yes"])
 
 
@@ -82,11 +80,20 @@ def main():
 
             demo_cols_result = recommend_demographic_columns(df_proc)
             if demo_cols_result:
-                demo_cols = demo_cols_result
-                group_col = st.selectbox(
-                    "Select demographic column", demo_cols, index=0
-                )
-                show_demographic_overview(df_proc, demo_cols)
+                # Filter to only include columns that exist in the DataFrame
+                demo_cols = [
+                    col for col in demo_cols_result if col in df_proc.columns
+                ]
+                if demo_cols:
+                    group_col = st.selectbox(
+                        "Select demographic column", demo_cols, index=0
+                    )
+                    show_visualizations(df_proc, demo_cols)
+                else:
+                    st.warning(
+                        "No suitable demographic columns found in the dataset."
+                    )
+                    demo_cols = []
             else:
                 st.warning("No suitable demographic columns found.")
                 demo_cols = []

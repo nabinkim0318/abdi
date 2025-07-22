@@ -36,6 +36,11 @@ def apply_preprocessing(
         - Uses `missing_label` for missing categorical values during label encoding.
     """
     df_processed = df.copy()
+    print(f"[DEBUG] df_processed length: {len(df_processed)}")
+    df_processed = df_processed.drop_duplicates()
+    print(f"[FILTERED] df_processed length: {len(df_processed)}")
+    print(f"[FILTERED] df_processed columns: {df_processed.columns}")
+
     if show_logs:
         st.markdown("### 🛠️ Preprocessing Log")
 

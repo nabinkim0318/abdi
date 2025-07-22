@@ -51,15 +51,17 @@ def recommend_preprocessing(df):
                     skewness = skew(series.dropna())
                 except Exception:
                     skewness = 0
-                if abs(skewness) > 1:
+                if skewness > 1:
                     recs.append("Log1pTransform")
+                elif skewness < -1:
+                    recs.append("PowerTransform")
                 else:
                     recs.append("MinMaxScaler")
         else:
             recs.append("UnknownType")
 
         # 🧼 Missing value handling
-        if null_ratio >= 0.95:
+        if null_ratio >= 0.7:
             recs.append("DropHighNaNs")
         elif null_ratio > 0.5:
             recs.append("ImputeMissing + ⚠️ ConsiderDropping")
