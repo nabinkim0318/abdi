@@ -1,3 +1,4 @@
+import logging
 from typing import List
 from typing import Optional
 
@@ -44,6 +45,11 @@ DEMOGRAPHIC_CATEGORIES = [
     "children",
     "family",
 ]
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
 
 
 def identify_by_hierarchy(df: pd.DataFrame) -> list[str]:
@@ -131,31 +137,94 @@ def process_age_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def merge_dummy_columns(
-    df: pd.DataFrame, prefix_keywords: list[str]
-) -> pd.DataFrame:
+def get_category(row, cols, kw):
+    active = [col for col in cols if row[col] == 1]
+    if len(active) > 1:
+        logging.warning(f"[⚠️ Collision] Multiple 1's for {kw}: {active}")
+    if active:
+        return active[0].replace(f"{kw}_", "")
+    return "unknown"
+
+
+def merge_dummy_columns_and_get_mapping(
+    df: pd.DataFrame, prefix_keywords: list[str], drop: bool = True
+) -> tuple[pd.DataFrame, dict[str, str]]:
     """
-    Merge one-hot encoded dummy columns (e.g., gender_female,
-    gender_male) into single categorical columns.
+    Merge one-hot encoded dummy columns (e.g., gender_female, gender_male)
+    into a single categorical column with '_mapped' suffix, and return
+    the mapping from original nested name to merged column name.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame.
+        prefix_keywords (list[str]): List of column prefixes to merge.
+        drop (bool): Whether to drop original dummy columns after merging.
+
+    Returns:
+        Tuple[pd.DataFrame, dict[str, str]]: Modified DataFrame and mapping dict.
     """
     df_new = df.copy()
+    mapping = {}
+
     for keyword in prefix_keywords:
-        dummy_cols = [col for col in df.columns if col.startswith(keyword + "_")]
+        dummy_cols = [col for col in df_new.columns if col.startswith(keyword + "_")]
+        if not dummy_cols:
+            continue
+
+        mapped_col = f"{keyword}_mapped"
+
         if len(dummy_cols) >= 2:
+            df_new[mapped_col] = df_new.apply(
+                lambda row, dcols=dummy_cols, key=keyword: get_category(
+                    row, dcols, key
+                ),
+                axis=1,
+            )
+            logging.info(f"[✅ Merged] {len(dummy_cols)} columns → {mapped_col}")
 
-            def get_category(row, cols=dummy_cols, kw=keyword):
-                for col in cols:
-                    if row.get(col) == 1:
-                        return col.replace(kw + "_", "")
-                return "unknown"
+        elif len(dummy_cols) == 1:
+            single_col = dummy_cols[0]
+            df_new[mapped_col] = df_new[single_col].apply(
+                lambda x: str(x) if pd.notnull(x) else "unknown"
+            )
+            logging.info(
+                f"[ℹ️ Single dummy] Converted '{single_col}' to '{mapped_col}'"
+            )
 
-            df_new[keyword] = df_new[dummy_cols].apply(get_category, axis=1)
-    return df_new
+        # Register mapping
+        mapping[keyword] = mapped_col
+
+        if drop:
+            if mapped_col in df_new.columns and df_new[mapped_col].nunique() > 1:
+                df_new.drop(columns=dummy_cols, inplace=True)
+                logging.info(
+                    f"[🧹 Dropped] {dummy_cols} after merge into '{mapped_col}'"
+                )
+            else:
+                logging.warning(
+                    f"[⚠️ Retained] Skipped dropping {dummy_cols} "
+                    "due to insufficient category info."
+                )
+
+    return df_new, mapping
+
+
+def is_categorical_column(series: pd.Series) -> bool:
+    """Check if a series is suitable as a categorical group variable."""
+    dtype = series.dtype
+    values = series.dropna().unique()
+    n_unique = len(values)
+    is_binary = set(values) <= {0, 1, True, False, 0.0, 1.0}
+    return (
+        pd.api.types.is_object_dtype(dtype)
+        or pd.api.types.is_string_dtype(dtype)
+        or (n_unique == 2 and is_binary)
+        or (n_unique <= 15 and pd.api.types.is_integer_dtype(dtype))
+    )
 
 
 def recommend_demographic_columns(
     df: pd.DataFrame, demographic_cols: Optional[List[str]] = None
-) -> Optional[List[str]]:
+) -> tuple[pd.DataFrame, List[str]]:
     """
     Recommend demographic columns for grouping.
 
@@ -163,54 +232,60 @@ def recommend_demographic_columns(
         A list of column names that are suitable for demographic grouping,
         or None if no suitable column is found.
     """
-    # Step 1: Merge dummy columns (e.g., gender_male, gender_female → gender)
-    df = merge_dummy_columns(
+    # Step 1: Merge dummy columns and get mapping to _mapped names
+    df, mapping = merge_dummy_columns_and_get_mapping(
         df,
         prefix_keywords=[
             "demographic.gender",
             "demographic.race",
             "demographic.ethnicity",
+            "demographic.age",
         ],
+        drop=True,
     )
+    print(f"[DEBUG] df.columns after merge: {df.columns}")
+    print(f"[DEBUG] merge mapping: {mapping}")
 
+    # Step 2: Identify candidate columns
     if demographic_cols is None:
         demographic_cols = identify_by_hierarchy(df)
-
     print(f"[DEBUG] Evaluating candidate columns from: {demographic_cols}")
-    candidate_cols = []
 
+    candidate_cols = []
     for col in demographic_cols:
-        if col not in df.columns:
-            print(f"[WARNING] Column '{col}' not in DataFrame.")
+        mapped_col = mapping.get(col, col)
+
+        if mapped_col not in df.columns:
+            print(f"[⚠️ WARNING] Column '{mapped_col}' not found in df.")
             continue
 
-        n_unique = df[col].nunique(dropna=True)
-        missing_ratio = df[col].isna().mean()
-        dtype = df[col].dtype
-
-        col_values = df[col].dropna().unique()
-        is_binary_values = set(col_values) <= {0, 1, True, False, 0.0, 1.0}
-        is_bool_or_dummy = len(col_values) == 2 and is_binary_values
-
-        is_categorical = (
-            pd.api.types.is_object_dtype(dtype)
-            or pd.api.types.is_string_dtype(dtype)
-            or is_bool_or_dummy
-            or (n_unique <= 15 and pd.api.types.is_integer_dtype(dtype))
-        )
+        series = df[mapped_col]
+        n_unique = series.nunique(dropna=True)
+        missing_ratio = series.isna().mean()
+        is_categorical = is_categorical_column(series)
 
         print(
-            f"[DEBUG] Column '{col}': unique={n_unique}, "
-            f"missing={missing_ratio:.2f}, "
-            f"categorical={is_categorical}"
+            f"[DEBUG] Column '{mapped_col}': unique={n_unique}, "
+            f"missing={missing_ratio:.2f}, categorical={is_categorical}"
         )
 
         if 2 <= n_unique <= 15 and is_categorical and missing_ratio <= 0.5:
-            candidate_cols.append(col)
+            candidate_cols.append(mapped_col)
 
     if candidate_cols:
         print(f"[DEBUG] Recommended group column(s): {candidate_cols}")
-        return candidate_cols
+        debug_check_mapped_columns(df)
+        return df, candidate_cols
+
+    print("[⚠️ WARNING] No suitable group column found.")
+    return df, []
+
+
+def debug_check_mapped_columns(df, expected_suffix="_mapped"):
+    mapped_cols = [col for col in df.columns if col.endswith(expected_suffix)]
+    if mapped_cols:
+        print(f"[✅] Found {len(mapped_cols)} mapped columns:")
+        for col in mapped_cols:
+            print(f"   • {col}")
     else:
-        print("[WARNING] No suitable group column found.")
-        return None
+        print("[❌] No mapped columns found.")

@@ -1,9 +1,21 @@
+import logging
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import streamlit as st
 from sklearn.preprocessing import MinMaxScaler
+
+from bias_audit_tool.preprocessing.recommend_columns import (
+    merge_dummy_columns_and_get_mapping,
+)
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
 
 
 def clean_label(col):
@@ -34,10 +46,11 @@ def show_visualizations(df, audit_cols):
 
     if not audit_cols:
         st.warning(
-            "⚠️ No meaningful columns to visualize. " "ID-like columns were removed."
+            "⚠️ No meaningful columns to visualize. ID-like columns were removed."
         )
         return
 
+    # Predefined dummy-based column groups
     gender_cols = ["demographic.gender_female", "demographic.gender_male"]
     race_cols = [
         "demographic.race_white",
@@ -51,63 +64,67 @@ def show_visualizations(df, audit_cols):
         "demographic.ethnicity_not reported",
     ]
 
-    shown = {
-        "gender": False,
-        "race": False,
-        "ethnicity": False,
-    }
+    shown = {"gender": False, "race": False, "ethnicity": False}
 
     for col in audit_cols:
+        print(f"[DEBUG] col: {col}")
         if df[col].dropna().empty:
             st.warning(f"⚠️ Column `{col}` has only NaNs.")
             continue
 
-        if (
-            set(gender_cols).issubset(df.columns)
-            and col in gender_cols
-            and not shown["gender"]
-        ):
+        # Handle predefined dummy groups
+        if col == "demographic.gender" and not shown["gender"]:
+            print("[UNIQUE VALUES]", df[col].unique())
             st.markdown("#### 🔍 Gender Distribution")
-            plot_grouped_bar(df, gender_cols, "Gender Distribution", palette="Set2")
+            fig, ax = plt.subplots()
+            df[col] = df[col].astype(str)
+            sns.countplot(data=df, x=col, ax=ax, palette="Set2")
+            ax.set_title("Gender Distribution")
+            st.pyplot(fig)
             shown["gender"] = True
-            continue  # ✅ 중복 방지
+            continue
 
-        # 🔹 Race Plot (1회만)
         if (
             set(race_cols).issubset(df.columns)
             and col in race_cols
             and not shown["race"]
         ):
+            print("[UNIQUE VALUES]", df[col].unique())
             st.markdown("#### 🔍 Race Distribution")
-            plot_grouped_bar(df, race_cols, "Race Distribution", palette="Set2")
+            fig, ax = plt.subplots()
+            df[col] = df[col].astype(str)
+            sns.countplot(data=df, x=col, ax=ax, palette="Set2")
+            ax.set_title("Race Distribution")
+            st.pyplot(fig)
             shown["race"] = True
             continue
 
-        # 🔹 Ethnicity Plot (1회만)
         if (
             set(ethnicity_cols).issubset(df.columns)
             and col in ethnicity_cols
             and not shown["ethnicity"]
         ):
             st.markdown("#### 🔍 Ethnicity Distribution")
-            plot_grouped_bar(
-                df, ethnicity_cols, "Ethnicity Distribution", palette="Set2"
-            )
+            print("[UNIQUE VALUES]", df[col].unique())
+            fig, ax = plt.subplots()
+            df[col] = df[col].astype(str)
+            sns.countplot(data=df, x=col, ax=ax, palette="Set2")
+            ax.set_title("Ethnicity Distribution")
+            st.pyplot(fig)
             shown["ethnicity"] = True
             continue
 
-        # 🔸 Other Categorical Variables
-        condition = (
-            is_categorical(df[col])
-            and col not in gender_cols
-            and col not in race_cols
-            and col not in ethnicity_cols
-        )
-        if condition:
+        # Handle categorical columns
+        if is_categorical(df[col]):
+            print(df[col].unique())
+
             st.markdown(f"#### 🔍 Visualizations for `{col}`")
+            df[col] = df[col].astype(
+                str
+            )  # 🔒 Make sure it's categorical as a string
             fig, ax = plt.subplots(figsize=(8, 4))
             sns.countplot(
-                x=col,
+                y=col,
                 data=df,
                 order=df[col].value_counts().index,
                 ax=ax,
@@ -118,18 +135,18 @@ def show_visualizations(df, audit_cols):
             ax.set_xlabel(label, fontsize=12)
             ax.set_ylabel("Count", fontsize=12)
             ax.tick_params(axis="x", rotation=30)
-            ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
             st.pyplot(fig)
             plt.close(fig)
 
-        # 🔸 Numerical
+        # Handle numerical columns
         else:
             if col in gender_cols + race_cols + ethnicity_cols:
-                continue
+                continue  # Skip dummy-style columns already handled
             st.markdown(f"#### 🔍 Visualizations for `{col}`")
+            label = clean_label(col)
+
             fig1, ax1 = plt.subplots(figsize=(8, 4))
             sns.histplot(df[col].dropna(), kde=True, ax=ax1, color="#4C72B0")
-            label = clean_label(col)
             ax1.set_title(f"Distribution: {label}", fontsize=14)
             ax1.set_xlabel(label, fontsize=12)
             st.pyplot(fig1)
@@ -141,12 +158,14 @@ def show_visualizations(df, audit_cols):
             st.pyplot(fig2)
             plt.close(fig2)
 
-    st.markdown("#### 🔥 Missing Value Heatmap")
-    fig3, ax3 = plt.subplots(figsize=(10, 0.3 * len(df.columns)))
-    sns.heatmap(df.isnull(), cbar=False, yticklabels=False, ax=ax3, cmap="coolwarm")
-    ax3.set_title("Missing Values by Column", fontsize=13)
-    st.pyplot(fig3)
-    plt.close(fig3)
+    # Final: Missing value heatmap
+    # st.markdown("#### 🔥 Missing Value Heatmap")
+    # fig3, ax3 = plt.subplots(figsize=(10, 0.3 * len(df.columns)))
+    # sns.heatmap(df.isnull(), cbar=False, yticklabels=False, ax=ax3,
+    # cmap="coolwarm")
+    # ax3.set_title("Missing Values by Column", fontsize=13)
+    # st.pyplot(fig3)
+    # plt.close(fig3)
 
 
 def show_groupwise_visualizations(df, demo_cols, target_col=None):
@@ -167,6 +186,12 @@ def show_groupwise_visualizations(df, demo_cols, target_col=None):
         Streamlit-rendered visualizations per demographic column.
     """
     sns.set_theme(style="whitegrid", palette="pastel")
+    demo_cols = [
+        col
+        for col in demo_cols
+        if "demographic" in col
+        or any(key in col for key in ["gender", "race", "ethnicity"])
+    ]
     demo_cols = [col for col in demo_cols if not is_id_column(df[col])]
 
     if not demo_cols:
@@ -192,6 +217,9 @@ def show_groupwise_visualizations(df, demo_cols, target_col=None):
         target_col = None
 
     for col in demo_cols:
+        if col not in df.columns:
+            logging.warning(f"⚠️ Column '{col}' not in dataframe. Skipping plot.")
+            continue
         st.markdown(f"#### 👥 Group-wise Distribution by `{clean_label(col)}`")
 
         df_plot = df.copy()
@@ -309,18 +337,36 @@ def restore_group_column(df, prefix, new_col_name):
     return df_copy
 
 
-def auto_group_selector(df):
-    st.sidebar.markdown("### 🔄 Auto One-Hot Column Restoration")
+def auto_group_selector(df, merge_all=True):
+    """
+    Either merge all one-hot columns automatically (if merge_all=True),
+    or allow manual selection via Streamlit sidebar UI.
 
-    prefixes = sorted(
-        list(
+    Returns:
+        - df_merged (pd.DataFrame): Processed DataFrame
+        - mapping (dict) if merge_all else restored column name (str)
+    """
+
+    def extract_prefixes(df):
+        return sorted(
             {
-                col.split("_")[0] + "." + col.split("_")[1] + "_"
+                ".".join(col.split("_")[0:2])  # e.g., demographic.gender
                 for col in df.columns
-                if "_" in col
+                if "_" in col and len(col.split("_")) >= 2
             }
         )
-    )
+
+    if merge_all:
+        prefixes = extract_prefixes(df)
+        df_merged, mapping = merge_dummy_columns_and_get_mapping(
+            df, prefixes, drop=True
+        )
+        return df_merged, mapping
+
+    # === Manual Mode via Sidebar ===
+    st.sidebar.markdown("### 🔄 Auto One-Hot Column Restoration")
+
+    prefixes = extract_prefixes(df)
 
     if not prefixes:
         st.sidebar.info("No One-hot Encoded Columns Found.")
@@ -328,7 +374,7 @@ def auto_group_selector(df):
 
     st.sidebar.write(f"Found {len(prefixes)} one-hot encoded column groups:")
     for prefix in prefixes[:3]:
-        st.sidebar.write(f"• {prefix}...")
+        st.sidebar.write(f"• {prefix}_...")
 
     if "restored_df" in st.session_state and "restored_col" in st.session_state:
         st.sidebar.success(
@@ -344,7 +390,9 @@ def auto_group_selector(df):
     )
 
     if selected_prefix:
-        onehot_cols = [col for col in df.columns if col.startswith(selected_prefix)]
+        onehot_cols = [
+            col for col in df.columns if col.startswith(selected_prefix + "_")
+        ]
         st.sidebar.markdown(f"**Preview:** {len(onehot_cols)} columns found:")
         for col in onehot_cols[:3]:
             st.sidebar.markdown(f"• `{col}`")
@@ -357,7 +405,7 @@ def auto_group_selector(df):
 
     if st.sidebar.button("Restore Group Column", key="restore_button_unique"):
         try:
-            df_new = restore_group_column(df, selected_prefix, new_col_name)
+            df_new = restore_group_column(df, selected_prefix + "_", new_col_name)
             st.session_state["restored_df"] = df_new
             st.session_state["restored_col"] = new_col_name
             st.session_state["restored_prefix"] = selected_prefix
