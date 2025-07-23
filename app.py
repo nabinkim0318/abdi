@@ -11,7 +11,6 @@ from bias_audit_tool.utils.ui_helpers import get_user_preprocessing_options
 from bias_audit_tool.utils.ui_helpers import run_modeling_and_fairness
 from bias_audit_tool.visualization.ui_blocks import audit_and_visualize_fairness
 from bias_audit_tool.visualization.ui_blocks import download_processed_csv
-from bias_audit_tool.visualization.visualization import auto_group_selector
 from bias_audit_tool.visualization.visualization import plot_radar_chart
 from bias_audit_tool.visualization.visualization import show_visualizations
 
@@ -53,47 +52,41 @@ def main():
             df_proc = apply_preprocessing_and_display(
                 df, recommendations, show_logs, options
             )
-            st.session_state.df_proc = df_proc  # persist state
-            st.session_state.recommendations = recommendations
+            st.session_state.df_proc = df_proc
             st.session_state.preprocessing_applied = True
             st.success("✅ Preprocessing applied!")
 
-        # If preprocessing is done, allow further analysis
+        # 👉 Step 3: Post-Preprocessing Analysis
         if st.session_state.preprocessing_applied and "df_proc" in st.session_state:
             df_proc = st.session_state.df_proc
             recommendations = st.session_state.recommendations
 
-            # 🔄 Auto One-Hot Column Restoration (moved earlier)
-            # Use a copy to avoid modifying the original
-            df_proc_copy = df_proc.copy()
-            df_proc_restored, group_col = auto_group_selector(df_proc_copy)
+            # 🔎 Merge and Recommend demographic columns
+            df_proc, demo_cols_result = recommend_demographic_columns(df_proc)
+            demo_cols = [
+                col for col in (demo_cols_result or []) if col in df_proc.columns
+            ]
+            print(
+                "[DEBUG] Columns at time of validation check:",
+                df_proc.columns.tolist(),
+            )
+            print("[DEBUG] Checking presence of each recommended col:")
+            for col in demo_cols_result:
+                print(f" - {col} → {'✅' if col in df_proc.columns else '❌'}")
 
-            # Update session state with restored data if restoration was successful
-            if group_col:
+            group_col = st.session_state.get("group_col")
+            if demo_cols:
+                default_index = (
+                    demo_cols.index(group_col) if group_col in demo_cols else 0
+                )
+                group_col = st.selectbox(
+                    "Select demographic column", demo_cols, index=default_index
+                )
                 st.session_state.group_col = group_col
-                df_proc = df_proc_restored
-                st.session_state.df_proc = df_proc
-                st.success(f"✅ Group column '{group_col}' restored.")
+                print(f"[DEBUG] group_col selected: {group_col}")
 
-            else:
-                group_col = st.session_state.get("group_col", None)
-
-            demo_cols_result = recommend_demographic_columns(df_proc)
-            if demo_cols_result:
-                # Filter to only include columns that exist in the DataFrame
-                demo_cols = [
-                    col for col in demo_cols_result if col in df_proc.columns
-                ]
-                if demo_cols:
-                    group_col = st.selectbox(
-                        "Select demographic column", demo_cols, index=0
-                    )
-                    show_visualizations(df_proc, demo_cols)
-                else:
-                    st.warning(
-                        "No suitable demographic columns found in the dataset."
-                    )
-                    demo_cols = []
+                # 🚀 Visualize demographics
+                show_visualizations(df_proc, demo_cols)
             else:
                 st.warning("No suitable demographic columns found.")
                 demo_cols = []
@@ -105,11 +98,7 @@ def main():
                     "diagnoses.ajcc_pathologic_stage",
                     "treatments.therapeutic_agents",
                 ]
-                plot_radar_chart(
-                    df_proc,
-                    group_col,
-                    metrics,
-                )
+                plot_radar_chart(df_proc, group_col, metrics)
 
             # Download
             download_processed_csv(df_proc)

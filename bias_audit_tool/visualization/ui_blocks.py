@@ -48,7 +48,8 @@ def show_demographic_analysis(df_proc):
     demographic_candidates = recommend_demographic_columns(df_proc)
     st.sidebar.markdown("#### 🧬 Auto-Detected Demographics")
     st.sidebar.write(
-        ", ".join(col for col, _, _ in demographic_candidates) or "❌ None found"
+        ", ".join(col for col, *_ in (demographic_candidates or []))
+        or "❌ None found"
     )
 
     if not demographic_candidates:
@@ -75,24 +76,24 @@ def show_demographic_analysis(df_proc):
     st.dataframe(summary_df, use_container_width=True)
 
     # 3. Heatmap - Structural bias visualization
-    st.markdown("#### 🔥 Demographic Distribution Heatmap")
-    if len(demographic_candidates) > 1:
-        # Create correlation/co-occurrence matrix for demographic columns
-        demo_subset = df_proc[demographic_candidates[:5]]  # Top 5 for heatmap
-        demo_encoded = pd.get_dummies(demo_subset, drop_first=True)
+    # st.markdown("#### 🔥 Demographic Distribution Heatmap")
+    # if len(demographic_candidates) > 1:
+    #     # Create correlation/co-occurrence matrix for demographic columns
+    #     demo_subset = df_proc[demographic_candidates[:5]]  # Top 5 for heatmap
+    #     demo_encoded = pd.get_dummies(demo_subset, drop_first=True)
 
-        if not demo_encoded.empty:
-            fig, ax = plt.subplots(figsize=(10, 6))
-            sns.heatmap(
-                demo_encoded.corr(),
-                annot=True,
-                cmap="coolwarm",
-                center=0,
-                ax=ax,
-            )
-            ax.set_title("Demographic Feature Correlations")
-            st.pyplot(fig)
-            plt.close(fig)
+    #     if not demo_encoded.empty:
+    #         fig, ax = plt.subplots(figsize=(10, 6))
+    #         sns.heatmap(
+    #             demo_encoded.corr(),
+    #             annot=True,
+    #             cmap="coolwarm",
+    #             center=0,
+    #             ax=ax,
+    #         )
+    #         ax.set_title("Demographic Feature Correlations")
+    #         st.pyplot(fig)
+    #         plt.close(fig)
 
     # 4. Top-k Auto Show - Most important columns first
     st.markdown("#### 🎯 Key Demographic Insights")
@@ -121,7 +122,7 @@ def show_demographic_analysis(df_proc):
             st.markdown(f"**Distribution of {clean_label(col)}**")
             fig, ax = plt.subplots(figsize=(8, 4))
             if df_proc[col].dtype == "object" or df_proc[col].nunique() < 10:
-                sns.countplot(data=df_proc, x=col, ax=ax)
+                sns.countplot(data=df_proc, x=col, ax=ax, hue=df_proc[col])
                 ax.set_title(f"Distribution of {clean_label(col)}")
                 ax.set_xlabel(clean_label(col))
                 ax.tick_params(axis="x", rotation=45)
@@ -252,33 +253,49 @@ def audit_and_visualize_fairness(df, recommendations=None):
 
     # 1. Choose a representative demographic column
     demographic_cols_result = recommend_demographic_columns(df)
+    print(f"[DEBUG] demographic_cols_result: {demographic_cols_result}")
 
     if not demographic_cols_result:
         st.warning("⚠️ No valid demographic columns found in the dataset.")
         return
 
     # Filter to only include columns that exist in the DataFrame
-    demographic_cols = [col for col in demographic_cols_result if col in df.columns]
+    # clean_col_set = set(map(str.strip, df.columns))
+    # clean_col_set = set(df.columns)
+    # demographic_cols = [col for col in demographic_cols_result
+    # if col in clean_col_set]
 
-    if not demographic_cols:
-        st.warning("⚠️ No valid demographic columns found in the dataset.")
-        return
+    # for col in demographic_cols_result:
+    #     print(f" - {repr(col)} in df.columns? →
+    # {'✅' if col in df.columns else '❌'}")
+
+    # if not demographic_cols:
+    #     st.warning("⚠️ No valid demographic columns found in the dataset.")
+    #     return
+
+    # print(f"[DEBUG] demographic_cols_result after validation: {demographic_cols}")
 
     # set default group column based on heuristic
-    group_col_default = demographic_cols[0]
+    group_col_default = demographic_cols_result[0]
 
     group_col = st.selectbox(
         "Select demographic column for fairness check",
-        demographic_cols,
+        demographic_cols_result,
         index=(
-            demographic_cols.index(group_col_default)
-            if group_col_default in demographic_cols
+            demographic_cols_result.index(group_col_default)
+            if group_col_default in demographic_cols_result
             else 0
         ),
     )
+    print(f"[DEBUG] group_col: {group_col}")
 
     # 2. Provide or input benchmark distribution
-    default_benchmark = df[group_col].value_counts(normalize=True).round(3).to_dict()
+    default_benchmark = (
+        df.loc[df[group_col] != "unknown", group_col]
+        .value_counts(normalize=True)
+        .round(3)
+        .to_dict()
+    )
     st.markdown(
         "📌 Specify benchmark distribution (optional, "
         "JSON format: {'GroupA': 0.5, 'GroupB': 0.5})"
@@ -290,6 +307,8 @@ def audit_and_visualize_fairness(df, recommendations=None):
 
     try:
         benchmark = json.loads(benchmark_json)
+        print(f"[DEBUG] benchmark distribution: {benchmark}")
+
     except json.JSONDecodeError:
         st.warning("⚠️ Invalid JSON, using " "observed distribution instead.")
         benchmark = default_benchmark
@@ -298,6 +317,7 @@ def audit_and_visualize_fairness(df, recommendations=None):
     fairness_result = compute_input_fairness(
         df, demographic_col=group_col, benchmark_distribution=benchmark
     )
+    print(f"[DEBUG] fairness_result: {fairness_result}")
 
     # 4. Show summary results
     display_fairness_summary(fairness_result)
@@ -324,12 +344,5 @@ def audit_and_visualize_fairness(df, recommendations=None):
 
     # 5. Visualize
     fig = plot_input_fairness(fairness_result)
+    print(f"[DEBUG] fig from plot_input_fairness: {type(fig)}")
     st.pyplot(fig)
-
-
-def get_related_demographic_columns(df):
-    """
-    Get related demographic columns from the DataFrame.
-    """
-    demographic_candidates = recommend_demographic_columns(df)
-    return demographic_candidates
