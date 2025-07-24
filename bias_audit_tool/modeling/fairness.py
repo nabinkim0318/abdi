@@ -161,28 +161,78 @@ def compute_input_fairness(
     )
 
     # 7. Sort by largest group
-    return result_df.sort_values(sort_by, ascending=False)
+    result_df = result_df.sort_values(sort_by, ascending=False).reset_index()
+    result_df = result_df.rename(columns={"index": "Group"})
+    return result_df
 
 
-def plot_input_fairness(result_df: pd.DataFrame):
-    fig, ax = plt.subplots()
-    sns.barplot(
-        x=result_df.index,
-        y="Disparity_Ratio",
-        hue="Fair?",
-        data=result_df,
-        dodge=False,
-        ax=ax,
-    )
-    ax.axhline(1, linestyle="--", color="black")
-    ax.axhline(0.8, linestyle=":", color="gray")
-    ax.axhline(1.25, linestyle=":", color="gray")
-    ax.set_title("Disparity Ratio by Group")
-    ax.set_ylabel("Disparity Ratio")
-    ax.set_xlabel("Group")
-    ax.tick_params(axis="x", rotation=45)
-    fig.tight_layout()
-    return fig
+# def plot_input_fairness(result_df: pd.DataFrame):
+#     if "Group" not in result_df.columns:
+#         result_df = result_df.reset_index()
+#         if "index" in result_df.columns:
+#             result_df = result_df.rename(columns={"index": "Group"})
+
+#     fig, ax = plt.subplots()
+#     sns.barplot(
+#         data=result_df,
+#         x="Group",  # ✅ 'group' → 'Group'
+#         y="Disparity_Ratio",
+#         hue="Fair?",
+#         dodge=False,
+#         ax=ax,
+#     )
+#     ax.axhline(1, linestyle="--", color="black", label="Ideal (1.0)")
+#     ax.axhline(0.8, linestyle=":", color="gray", label="Lower Bound (0.8)")
+#     ax.axhline(1.25, linestyle=":", color="gray", label="Upper Bound (1.25)")
+#     ax.set_title("Disparity Ratio by Group")
+#     ax.set_ylabel("Disparity Ratio")
+#     ax.set_xlabel("Group")
+#     ax.tick_params(axis="x", rotation=45)
+#     ax.legend()
+#     fig.tight_layout()
+#     return fig
+
+
+def plot_input_fairness(fairness_result, top_n=20):
+    """
+    Plot bar chart showing disparity ratio by group.
+
+    Args:
+        fairness_result (pd.DataFrame): Result from compute_input_fairness()
+        top_n (int): Number of top groups to show
+
+    Returns:
+        matplotlib.figure.Figure: The generated plot figure
+    """
+    try:
+        # Visualize only the top groups
+        plot_df = fairness_result.sort_values(
+            "Disparity_Ratio", ascending=False
+        ).head(top_n)
+
+        fig, ax = plt.subplots(figsize=(10, 5))
+        sns.barplot(
+            data=plot_df,
+            y="Group",
+            x="Disparity_Ratio",
+            palette="viridis",
+            ax=ax,
+        )
+        ax.axvline(1.0, color="black", linestyle="--", label="Ideal (1.0)")
+        ax.axvline(0.8, color="gray", linestyle=":", label="Lower Bound (0.8)")
+        ax.axvline(1.25, color="gray", linestyle=":", label="Upper Bound (1.25)")
+
+        ax.set_title("📊 Disparity Ratio by Group")
+        ax.set_xlabel("Disparity Ratio (Observed / Expected)")
+        ax.set_ylabel("Demographic Group")
+        ax.legend()
+        plt.tight_layout()
+
+        return fig
+
+    except Exception as e:
+        print(f"[ERROR] plot_input_fairness failed: {e}")
+        return None
 
 
 def display_fairness_summary(result_df: pd.DataFrame, top_n: int = 5):

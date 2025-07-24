@@ -7,10 +7,6 @@ import seaborn as sns
 import streamlit as st
 from sklearn.preprocessing import MinMaxScaler
 
-from bias_audit_tool.preprocessing.recommend_columns import (
-    merge_dummy_columns_and_get_mapping,
-)
-
 
 logging.basicConfig(
     level=logging.INFO,
@@ -124,7 +120,7 @@ def show_visualizations(df, audit_cols):
             )  # 🔒 Make sure it's categorical as a string
             fig, ax = plt.subplots(figsize=(8, 4))
             sns.countplot(
-                y=col,
+                x=col,
                 data=df,
                 order=df[col].value_counts().index,
                 ax=ax,
@@ -356,13 +352,6 @@ def auto_group_selector(df, merge_all=True):
             }
         )
 
-    if merge_all:
-        prefixes = extract_prefixes(df)
-        df_merged, mapping = merge_dummy_columns_and_get_mapping(
-            df, prefixes, drop=True
-        )
-        return df_merged, mapping
-
     # === Manual Mode via Sidebar ===
     st.sidebar.markdown("### 🔄 Auto One-Hot Column Restoration")
 
@@ -486,5 +475,5 @@ def plot_distribution_comparison(result_df, top_n=20):
     ax.set_title("Observed vs Expected Group Distribution")
     ax.legend()
     fig.tight_layout()
-    st.pyplot(fig)
     plt.close(fig)
+    return fig
