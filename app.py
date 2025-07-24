@@ -1,4 +1,7 @@
 # bias_audit_tool/app.py
+import traceback
+import uuid
+
 import streamlit as st
 
 from bias_audit_tool.data.data_loader import load_and_preview_data
@@ -11,7 +14,6 @@ from bias_audit_tool.utils.ui_helpers import get_user_preprocessing_options
 from bias_audit_tool.utils.ui_helpers import run_modeling_and_fairness
 from bias_audit_tool.visualization.ui_blocks import audit_and_visualize_fairness
 from bias_audit_tool.visualization.ui_blocks import download_processed_csv
-from bias_audit_tool.visualization.visualization import plot_radar_chart
 from bias_audit_tool.visualization.visualization import show_visualizations
 
 
@@ -20,7 +22,6 @@ st.set_page_config(page_title="Bias Audit Tool", layout="wide")
 
 # ===== Sidebar =====
 st.sidebar.title("📊 Bias Audit Assistant")
-enable_modeling = st.sidebar.radio("🤖 Run ML Model?", ["No", "Yes"])
 
 
 # ===== Main Panel =====
@@ -28,22 +29,50 @@ st.title("🧪 Bias Audit Dashboard")
 
 
 def main():
-    group_col = None
+
+    enable_modeling = st.sidebar.radio("🤖 Run ML Model?", ["No", "Yes"])
     uploaded_file = st.file_uploader("📤 Upload CSV", type=["csv"])
 
+    # 📌 Initialize session state
     if "target_col" not in st.session_state:
         st.session_state.target_col = None
     if "preprocessing_applied" not in st.session_state:
         st.session_state.preprocessing_applied = False
+    if "step3_ready" not in st.session_state:
+        st.session_state.step3_ready = False
+    if "df" not in st.session_state:
+        st.session_state.df = None
+    if "df_proc" not in st.session_state:
+        st.session_state.df_proc = None
+    if "recommendations" not in st.session_state:
+        st.session_state.recommendations = None
+    if "trigger_audit" not in st.session_state:
+        st.session_state.trigger_audit = False
+    if "audit_run_id" not in st.session_state:
+        st.session_state.audit_run_id = uuid.uuid4()
 
-    if uploaded_file:
-        df = load_and_preview_data(uploaded_file)
-        if df is None:
-            st.stop()
+    if uploaded_file is not None:
+        if st.session_state.df is None or uploaded_file.name != getattr(
+            st.session_state, "uploaded_file_name", None
+        ):
+            df = load_and_preview_data(uploaded_file)
+            if df is None:
+                st.stop()
 
-        # 👉 Step 1: Recommendations
-        recommendations = display_preprocessing_recommendations(df)
-        st.session_state.recommendations = recommendations
+            st.session_state.df = df
+            st.session_state.df_proc = None
+            st.session_state.recommendations = display_preprocessing_recommendations(
+                df
+            )
+            st.session_state.preprocessing_applied = False
+            st.session_state.step3_ready = False
+            st.session_state.uploaded_file_name = uploaded_file.name
+            st.success("✅ File successfully loaded!")
+
+    # 👉 Step 1: Recommendations (only once)
+    if st.session_state.df is not None:
+        df = st.session_state.df
+        recommendations = st.session_state.recommendations
         show_logs = st.checkbox("🪵 Show detailed preprocessing logs", value=False)
         options = get_user_preprocessing_options()
 
@@ -54,85 +83,188 @@ def main():
             )
             st.session_state.df_proc = df_proc
             st.session_state.preprocessing_applied = True
+            st.session_state.step3_ready = True
+            st.session_state.trigger_audit = True
+
             st.success("✅ Preprocessing applied!")
-
-        # 👉 Step 3: Post-Preprocessing Analysis
-        if st.session_state.preprocessing_applied and "df_proc" in st.session_state:
-            df_proc = st.session_state.df_proc
-            recommendations = st.session_state.recommendations
-
-            # 🔎 Merge and Recommend demographic columns
-            df_proc, demo_cols_result = recommend_demographic_columns(df_proc)
-            demo_cols = [
-                col for col in (demo_cols_result or []) if col in df_proc.columns
-            ]
-            print(
-                "[DEBUG] Columns at time of validation check:",
-                df_proc.columns.tolist(),
-            )
-            print("[DEBUG] Checking presence of each recommended col:")
-            for col in demo_cols_result:
-                print(f" - {col} → {'✅' if col in df_proc.columns else '❌'}")
-
-            group_col = st.session_state.get("group_col")
-            if demo_cols:
-                default_index = (
-                    demo_cols.index(group_col) if group_col in demo_cols else 0
-                )
-                group_col = st.selectbox(
-                    "Select demographic column", demo_cols, index=default_index
-                )
-                st.session_state.group_col = group_col
-                print(f"[DEBUG] group_col selected: {group_col}")
-
-                # 🚀 Visualize demographics
-                show_visualizations(df_proc, demo_cols)
-            else:
-                st.warning("No suitable demographic columns found.")
-                demo_cols = []
-
-            # Radar chart (only if group_col is available)
-            if group_col:
-                metrics = [
-                    "demographic.age_at_index",
-                    "diagnoses.ajcc_pathologic_stage",
-                    "treatments.therapeutic_agents",
-                ]
-                plot_radar_chart(df_proc, group_col, metrics)
-
-            # Download
+            # Download CSV
             download_processed_csv(df_proc)
 
-            # Audit + Visualizations + Report
-            audit_and_visualize_fairness(df_proc, recommendations)
+        # 👉 Step 3: Post-Preprocessing Analysis
+        if st.session_state.get("step3_ready") and "df_proc" in st.session_state:
+            print("[DEBUG] step3_ready is True")
+            df_proc = st.session_state.df_proc
+            print(
+                "[DEBUG] if df_proc has gender before "
+                "recommend_demographic_columns:",
+                "gender_mapped" in df_proc.columns if df_proc is not None else False,
+            )
 
-            # 🔹 Modeling
-            if enable_modeling == "Yes" and group_col:
-                # Get the index for the target column, defaulting to 0 if not found
-                target_index = 0
-                if st.session_state.target_col in df_proc.columns:
+            # 🧠 Step 3a: Demographic column recommendation (only once)
+            if "demo_cols" not in st.session_state and df_proc is not None:
+                df_proc, demo_cols_result = recommend_demographic_columns(df_proc)
+                print(
+                    "[DEBUG] Columns after recommend_demographic_columns:",
+                    df_proc.columns.tolist(),
+                )
+                if "demographic.race_mapped" not in df_proc.columns:
+                    print("[⚠️] demographic.race_mapped was dropped!")
+
+                demo_cols = [
+                    str(col)
+                    for col in (demo_cols_result or [])
+                    if isinstance(col, str) and col in df_proc.columns
+                ]
+                st.session_state.demo_cols = demo_cols
+                st.session_state.df_proc = df_proc
+                if "demographic.race_mapped" not in df_proc.columns:
+                    print(
+                        f"[⚠️] demographic.race_mapped was dropped! "
+                        f"after session_status.demo_cols: "
+                        f"{st.session_state.demo_cols}"
+                    )
+            else:
+                demo_cols = st.session_state.demo_cols
+
+            if demo_cols:
+                previous_selection = st.session_state.get("group_col", demo_cols[0])
+                default_index = (
+                    demo_cols.index(previous_selection)
+                    if previous_selection in demo_cols
+                    else 0
+                )
+            else:
+                st.warning("No suitable demographic columns found.")
+                return
+
+            # Step 3b: Visualizations + Audit
+            st.header("📊 Data Preprocessing and Visualization")
+            show_visualizations(df_proc, demo_cols)
+
+            # Persist this checkbox state
+            if "show_visualization" not in st.session_state:
+                st.session_state.show_visualization = True
+
+            show_vis = st.checkbox(
+                "Show visualization", value=st.session_state.show_visualization
+            )
+            if show_vis != st.session_state.show_visualization:
+                st.session_state.show_visualization = show_vis
+
+            if st.session_state.show_visualization:
+                if df_proc is None:
+                    st.warning("No processed data.")
+                    return
+
+                demo_cols = st.session_state.get("demo_cols", [])
+                if not demo_cols:
+                    st.warning("No demographic columns.")
+                    return
+
+                # Allow user to experiment with multiple demographic columns
+                previous_selection = st.session_state.get("group_col", demo_cols[0])
+                group_col = st.selectbox(
+                    "Select demographic column",
+                    options=demo_cols,
+                    index=(
+                        demo_cols.index(previous_selection)
+                        if previous_selection in demo_cols
+                        else 0
+                    ),
+                    key="group_col_selectbox",
+                )
+                st.session_state.group_col = group_col
+                print(f"[INFO] group_col selected: {group_col}")
+                print(
+                    "[DEBUG] if df_proc has gender after group_col selected:",
+                    "gender_mapped" in df_proc.columns,
+                )
+
+                if group_col not in df_proc.columns:
+                    st.error(
+                        f"❌ Column '{group_col}' not found in "
+                        "DataFrame after preprocessing."
+                    )
+                    st.session_state.demo_cols = [
+                        col for col in demo_cols if col != group_col
+                    ]
+                    return
+
+                if df_proc is not None:
+                    print("[DEBUG] df_proc columns:", df_proc.columns)
+                    print(
+                        "[DEBUG] if df_proc has gender:",
+                        "gender_mapped" in df_proc.columns,
+                    )
+                current_group_col = group_col
+                last_group_col = st.session_state.get("last_group_col", None)
+
+                if current_group_col != last_group_col or st.session_state.get(
+                    "trigger_audit", False
+                ):
+                    if "audit_run_id" not in st.session_state:
+                        st.session_state.audit_run_id = uuid.uuid4()
+
+                    error_occurred = False
                     try:
-                        loc_result = df_proc.columns.get_loc(
-                            st.session_state.target_col
-                        )
-                        target_index = (
-                            loc_result if isinstance(loc_result, int) else 0
-                        )
-                    except (KeyError, ValueError):
-                        target_index = 0
+                        audit_and_visualize_fairness(df_proc, group_col)
+                    except Exception as e:
+                        st.session_state.audit_error_msg = f"{e}"
+                        st.session_state.audit_error_trace = traceback.format_exc()
+                        error_occurred = True
 
-                target_col = st.selectbox(  # type: ignore
-                    "🎯 Select target column",
-                    df_proc.columns,
-                    index=int(target_index),
+                    with st.expander("🔎 Fairness Audit", expanded=True):
+                        if error_occurred:
+                            st.error(
+                                f"❌ Error occurred during Fairness audit: "
+                                f"{st.session_state.audit_error_msg}"
+                            )
+                            st.text(st.session_state.audit_error_trace)
+                        else:
+                            st.session_state["last_group_col"] = current_group_col
+                            st.session_state["trigger_audit"] = False
+                            st.write(
+                                "🔁 Audit Run ID:", st.session_state.audit_run_id
+                            )
+
+            # Step 3c: Modeling
+            if enable_modeling == "Yes" and "group_col" in st.session_state:
+                cols = df_proc.columns.tolist() if df_proc is not None else []
+                default_index = (
+                    cols.index(st.session_state.group_col)
+                    if st.session_state.group_col in cols
+                    else 0
+                )
+                target_col = st.selectbox(
+                    "🎯 Select target column", options=cols, index=default_index
                 )
                 st.session_state.target_col = target_col
 
-                if target_col:  # if selected, run modeling
+                if target_col:
                     run_modeling_and_fairness(df_proc, target_col, demo_cols)
+
+            st.markdown("---")
+
+            if st.button("🔁 Try with another dataset?"):
+                # Clear only relevant session keys
+                initialize_session()
 
     else:
         st.info("⬅️ Please upload a dataset to begin.")
+
+
+def initialize_session():
+    defaults = {
+        "target_col": None,
+        "preprocessing_applied": False,
+        "step3_ready": False,
+        "df": None,
+        "df_proc": None,
+        "recommendations": None,
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
 
 
 def button_clicked(key):

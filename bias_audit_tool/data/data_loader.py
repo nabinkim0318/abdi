@@ -22,6 +22,7 @@ def load_and_preview_data(uploaded_file):
         - Displays error message and traceback if an exception occurs.
     """
     try:
+        uploaded_file.seek(0)
         df = pd.read_csv(
             uploaded_file, low_memory=False, na_values=["--", "NA", "N/A", "null"]
         )
