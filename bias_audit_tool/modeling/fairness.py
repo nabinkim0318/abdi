@@ -293,34 +293,6 @@ def display_fairness_summary(result_df: pd.DataFrame, top_n: int = 5):
     with metrics_col3:
         st.metric("Total Variation", f"{total_var:.4f}" if isinstance(total_var, float) else total_var)
 
-    # Flagged groups analysis
-    unfair_df = result_df[result_df["Fair?"] == "Not Fair"].copy()
-    if not unfair_df.empty:
-        st.markdown(f"### 🚨 Top {min(top_n, len(unfair_df))} Groups Requiring Attention")
-        
-        # Sort by deviation magnitude 
-        unfair_df["Deviation_Magnitude"] = abs(unfair_df["Disparity_Ratio"] - 1.0)
-        top_unfair = unfair_df.sort_values("Deviation_Magnitude", ascending=False).head(top_n)
-        
-        # Enhanced display with insights
-        for _, row in top_unfair.iterrows():
-            with st.expander(f"⚠️ {row['Group']} - {row['Deviation_Type']}"):
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write(f"**Observed:** {row['Observed_%']:.1%}")
-                    st.write(f"**Expected:** {row['Expected_%']:.1%}")
-                with col2:
-                    st.write(f"**Disparity Ratio:** {row['Disparity_Ratio']:.2f}")
-                    st.write(f"**Sample Size:** {row['Observed_Count']:,}")
-                
-                # Actionable insight
-                if row['Disparity_Ratio'] > 1.25:
-                    st.info("💡 **Insight:** This group is over-represented. Consider reviewing selection criteria.")
-                else:
-                    st.info("💡 **Insight:** This group is under-represented. Consider targeted outreach efforts.")
-    else:
-        st.success("✅ All demographic groups are within acceptable fairness thresholds!")
-
     # Full data table
     with st.expander("📋 Complete Fairness Analysis"):
         formatted_df = result_df.style.format({
