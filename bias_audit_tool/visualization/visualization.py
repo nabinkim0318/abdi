@@ -34,7 +34,7 @@ def restore_group_from_onehot(df, prefix):
 
 # === Main Visualization Function ===
 
-def show_demographic_overview(df, demographic_cols):
+def plot_distribution_comparison(df, demographic_cols):
     sns.set_theme(style="whitegrid", palette="pastel")
 
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
@@ -119,7 +119,7 @@ def main():
         demo_cols = [col for col in demo_cols if col in df.columns or any(df.columns.str.startswith(col + "_"))]
 
         if demo_cols:
-            show_demographic_overview(df, demo_cols)
+            plot_distribution_comparison(df, demo_cols)
         else:
             st.warning("No demographic columns found to visualize.")
 
