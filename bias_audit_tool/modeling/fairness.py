@@ -1,25 +1,15 @@
-import itertools
-import warnings
-
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-import seaborn as sns
 import streamlit as st
-
-from fairlearn.metrics import demographic_parity_difference, equalized_odds_difference, MetricFrame, selection_rate
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 from scipy.stats import entropy, wasserstein_distance
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
-# === Constants ===
-PLAIN_METRIC_NAMES = {
-    "Accuracy": "Overall Correctness",
-    "Precision": "Correctness of Positive Predictions", 
-    "Recall": "Coverage of Actual Positives",
-    "F1": "Balance between Precision & Recall",
-    "Selection Rate": "Group Selection Rate",
-}
+# === Config ===
+st.set_page_config(page_title="Fairness Audit", layout="wide")
+sns.set_theme(style="whitegrid")
 
+# === Benchmark: TNBC Example ===
 TNBC_RACE_BENCHMARK = {
     'Black': 0.36,
     'White': 0.19,
@@ -28,34 +18,40 @@ TNBC_RACE_BENCHMARK = {
     'Asian': 0.13
 }
 
-# === Validation ===
-def validate_inputs(df, demographic_col, benchmark_distribution):
-    if df is None or df.empty:
-        raise ValueError("DataFrame cannot be None or empty")
-    if demographic_col not in df.columns:
-        raise ValueError(f"Column '{demographic_col}' not found in DataFrame")
-    if not isinstance(benchmark_distribution, dict):
-        raise ValueError("benchmark_distribution must be a dictionary")
-    total = sum(benchmark_distribution.values())
-    if not 0.95 <= total <= 1.05:
-        warnings.warn(f"Benchmark distribution sums to {total:.3f}, not 1.0")
 
-# === Disparity Analysis ===
+# === Justifiability Logic (customize this) ===
+def default_justifiability_fn(row):
+    if row["Group"] == "Black":
+        return "Yes"  # Clinical rationale
+    return "Unknown"
+
+
+# === Utilities ===
+def compare_distributions(p, q, method="kl"):
+    p = np.array(p, dtype=float)
+    q = np.array(q, dtype=float)
+    if method == "kl":
+        epsilon = 1e-8
+        p = np.maximum(p, epsilon)
+        q = np.maximum(q, epsilon)
+    p_norm = p / p.sum()
+    q_norm = q / q.sum()
+    if method == "kl":
+        return entropy(p_norm, q_norm)
+    elif method == "wasserstein":
+        return wasserstein_distance(p_norm, q_norm)
+    else:
+        raise ValueError("method must be 'kl' or 'wasserstein'")
+
+
 def compute_input_fairness(
     df: pd.DataFrame,
     demographic_col: str,
-    benchmark_distribution: dict = None,
+    benchmark_distribution: dict,
     threshold_low: float = 0.8,
     threshold_high: float = 1.25,
-    sort_by: str = "Observed_%",
     justifiability_fn=None,
 ) -> pd.DataFrame:
-    if benchmark_distribution is None:
-        benchmark_distribution = TNBC_RACE_BENCHMARK
-        print("Using default TNBC race benchmark distribution")
-
-    validate_inputs(df, demographic_col, benchmark_distribution)
-
     observed_counts = df[demographic_col].value_counts(dropna=False)
     total = len(df)
     observed_percent = observed_counts / total
@@ -95,38 +91,17 @@ def compute_input_fairness(
     result_df.attrs["Total_Variation"] = 0.5 * np.sum(np.abs(obs_dist - exp_dist))
 
     result_df = result_df.reset_index().rename(columns={"index": "Group"})
-    result_df = result_df.sort_values(sort_by, ascending=False)
     return result_df
 
-def compare_distributions(p, q, method="kl"):
-    p = np.array(p, dtype=float)
-    q = np.array(q, dtype=float)
-    if method == "kl":
-        epsilon = 1e-8
-        p = np.maximum(p, epsilon)
-        q = np.maximum(q, epsilon)
-    p_norm = p / p.sum()
-    q_norm = q / q.sum()
-    if method == "kl":
-        return entropy(p_norm, q_norm)
-    elif method == "wasserstein":
-        return wasserstein_distance(p_norm, q_norm)
-    else:
-        raise ValueError("method must be 'kl' or 'wasserstein'")
 
-# === Plotting ===
-def plot_input_fairness(fairness_result, top_n=20, figsize=(12, 8)):
-    if fairness_result is None or fairness_result.empty:
-        print("No data to plot")
-        return None
-
-    plot_df = fairness_result.sort_values("Disparity_Ratio", ascending=False).head(top_n)
+def plot_disparity_chart(result_df: pd.DataFrame):
+    plot_df = result_df.copy()
     colors = plot_df["Framework_Flag"].map({
         "✅ OK": "#2E8B57",
         "⚠️ Check": "#DC143C"
     })
 
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, ax = plt.subplots(figsize=(10, 6))
     sns.barplot(
         data=plot_df,
         y="Group",
@@ -134,22 +109,72 @@ def plot_input_fairness(fairness_result, top_n=20, figsize=(12, 8)):
         palette=colors,
         ax=ax,
     )
-
-    ax.axvline(1.0, color="black", linestyle="--", linewidth=2, label="Perfect Parity")
+    ax.axvline(1.0, color="black", linestyle="--", label="Perfect Parity")
     ax.axvline(0.8, color="orange", linestyle=":", label="Lower Bound (0.8)")
     ax.axvline(1.25, color="orange", linestyle=":", label="Upper Bound (1.25)")
 
-    for i, (idx, row) in enumerate(plot_df.iterrows()):
-        if row["Disparity_Ratio"] > 2.0 or row["Disparity_Ratio"] < 0.5:
-            ax.annotate(f'{row["Disparity_Ratio"]:.2f}',
-                        xy=(row["Disparity_Ratio"], i),
-                        xytext=(5, 0), textcoords='offset points',
-                        va='center', fontsize=9)
-
-    ax.set_title("Disparity Ratios by Demographic Group", fontsize=14)
-    ax.set_xlabel("Disparity Ratio (Observed / Expected)", fontsize=12)
-    ax.set_ylabel("Demographic Group")
+    ax.set_title("📊 Disparity Ratios by Demographic Group", fontsize=14)
+    ax.set_xlabel("Disparity Ratio (Observed / Expected)")
+    ax.set_ylabel("Group")
     ax.legend()
-    ax.grid(axis='x', alpha=0.3)
-    plt.tight_layout()
-    return fig
+    st.pyplot(fig)
+
+
+# === Streamlit UI ===
+st.title("🧮 Fairness Audit (3-Question Framework)")
+
+with st.expander("📘 How it works", expanded=False):
+    st.markdown("""
+This tool implements a **3-question fairness framework**:
+
+1. **Benchmark Validity**: Is your reference population appropriate?
+2. **Magnitude of Disparity**: Is the disparity ratio extreme? (outside 0.8–1.25)
+3. **Justifiability**: Can you explain any disparities (clinically, ethically, etc.)?
+
+It also computes **KL Divergence**, **Wasserstein Distance**, and **Total Variation** between distributions.
+""")
+
+uploaded_file = st.file_uploader("📁 Upload your dataset (CSV)", type="csv")
+
+if uploaded_file:
+    df = pd.read_csv(uploaded_file)
+    st.success(f"Loaded {df.shape[0]} rows, {df.shape[1]} columns.")
+
+    with st.expander("🔍 Preview Data"):
+        st.dataframe(df.head(), use_container_width=True)
+
+    # === Column Selection
+    candidate_cols = df.columns[df.dtypes == "object"].tolist()
+    demo_col = st.selectbox("👤 Select a demographic column to audit", candidate_cols)
+
+    # === Audit
+    if st.button("🚨 Run Fairness Audit"):
+        result_df = compute_input_fairness(
+            df=df,
+            demographic_col=demo_col,
+            benchmark_distribution=TNBC_RACE_BENCHMARK,
+            justifiability_fn=default_justifiability_fn
+        )
+
+        st.markdown("## ✅ Audit Results")
+
+        # Show summary metrics
+        kl = result_df.attrs.get("KL_Divergence", np.nan)
+        wd = result_df.attrs.get("Wasserstein_Distance", np.nan)
+        tv = result_df.attrs.get("Total_Variation", np.nan)
+
+        st.write(f"📐 **KL Divergence:** `{kl:.4f}`")
+        st.write(f"🌊 **Wasserstein Distance:** `{wd:.4f}`")
+        st.write(f"📊 **Total Variation:** `{tv:.4f}`")
+
+        st.markdown("### 🧾 Disparity Table")
+        st.dataframe(result_df.style.format({
+            "Observed_%": "{:.1%}",
+            "Expected_%": "{:.1%}",
+            "Disparity_Ratio": "{:.2f}",
+            "Absolute_Difference": "{:.2%}"
+        }).background_gradient(subset=["Disparity_Ratio"], cmap="coolwarm", vmin=0.5, vmax=1.5),
+        use_container_width=True)
+
+        st.markdown("### 📉 Visualize Disparity")
+        plot_disparity_chart(result_df)
