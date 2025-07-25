@@ -99,16 +99,37 @@ def show_visualizations(df, audit_cols):
                 print(f"[DEBUG] col: {col}")
                 print("[UNIQUE VALUES]", df[col].unique())
                 
-                # Convert to string for consistent plotting
-                df_temp = df.copy()
-                df_temp[col] = df_temp[col].astype(str)
-                
-                # Create count plot
-                sns.countplot(data=df_temp, x=col, ax=ax, palette="Set2")
-                ax.set_title(f"{clean_label(col)}", fontsize=12)
-                ax.set_xlabel(clean_label(col), fontsize=10)
-                ax.set_ylabel("Count", fontsize=10)
-                ax.tick_params(axis="x", rotation=45, labelsize=9)
+                # Handle age columns with binning
+                if "age" in col.lower() and pd.api.types.is_numeric_dtype(df[col]):
+                    df_temp = df.copy()
+                    # Create age bins
+                    df_temp[f'{col}_binned'] = pd.cut(
+                        df_temp[col], 
+                        bins=[0, 25, 50, 75, float('inf')], 
+                        labels=['<25', '25-49', '50-75', '>75'],
+                        right=False
+                    )
+                    # Convert to string and handle NaN values
+                    df_temp[f'{col}_binned'] = df_temp[f'{col}_binned'].astype(str)
+                    df_temp[f'{col}_binned'] = df_temp[f'{col}_binned'].replace('nan', 'Unknown')
+                    
+                    # Create count plot with binned data
+                    sns.countplot(data=df_temp, x=f'{col}_binned', ax=ax, palette="Set2")
+                    ax.set_title(f"{clean_label(col)} (Binned)", fontsize=12)
+                    ax.set_xlabel("Age Groups", fontsize=10)
+                    ax.set_ylabel("Count", fontsize=10)
+                    ax.tick_params(axis="x", rotation=45, labelsize=9)
+                else:
+                    # Convert to string for consistent plotting
+                    df_temp = df.copy()
+                    df_temp[col] = df_temp[col].astype(str)
+                    
+                    # Create count plot
+                    sns.countplot(data=df_temp, x=col, ax=ax, palette="Set2")
+                    ax.set_title(f"{clean_label(col)}", fontsize=12)
+                    ax.set_xlabel(clean_label(col), fontsize=10)
+                    ax.set_ylabel("Count", fontsize=10)
+                    ax.tick_params(axis="x", rotation=45, labelsize=9)
             
             # Hide empty subplots
             for j in range(len(valid_demo_cols), len(axes)):
@@ -199,31 +220,48 @@ def show_groupwise_visualizations(df, demo_cols, target_col=None):
         ax = axes[i]
         
         df_plot = df.copy()
-        if df[col].nunique() > 20:
-            top_k = df[col].value_counts().nlargest(20).index
-            df_plot = df[df[col].isin(top_k)]
-
-        if (
-            pd.api.types.is_numeric_dtype(df_plot[col])
-            and df_plot[col].nunique() > 20
-        ):
-            df_plot["__binned__"] = pd.cut(
-                df_plot[col],
-                bins=[0, 20, 40, 60, 80, 100, 120],
-                labels=["0-20", "21-40", "41-60", "61-80", "81-100", "100+"],
+        
+        # Handle age columns with binning
+        if "age" in col.lower() and pd.api.types.is_numeric_dtype(df[col]):
+            df_plot[f'{col}_binned'] = pd.cut(
+                df_plot[col], 
+                bins=[0, 25, 50, 75, float('inf')], 
+                labels=['<25', '25-49', '50-75', '>75'],
+                right=False
             )
-            x_col = "__binned__"
+            df_plot[f'{col}_binned'] = df_plot[f'{col}_binned'].astype(str)
+            df_plot[f'{col}_binned'] = df_plot[f'{col}_binned'].replace('nan', 'Unknown')
+            x_col = f'{col}_binned'
+            col_label = f"{clean_label(col)} (Binned)"
+            x_label = "Age Groups"
         else:
-            x_col = col
+            if df[col].nunique() > 20:
+                top_k = df[col].value_counts().nlargest(20).index
+                df_plot = df[df[col].isin(top_k)]
+
+            if (
+                pd.api.types.is_numeric_dtype(df_plot[col])
+                and df_plot[col].nunique() > 20
+            ):
+                df_plot["__binned__"] = pd.cut(
+                    df_plot[col],
+                    bins=[0, 20, 40, 60, 80, 100, 120],
+                    labels=["0-20", "21-40", "41-60", "61-80", "81-100", "100+"],
+                )
+                x_col = "__binned__"
+            else:
+                x_col = col
+            col_label = clean_label(col)
+            x_label = clean_label(col)
 
         if target_col:
             if pd.api.types.is_numeric_dtype(df[target_col]):
                 sns.boxplot(x=x_col, y=target_col, data=df_plot, ax=ax)
                 ax.set_title(
-                    f"{clean_label(target_col)} by {clean_label(col)}",
+                    f"{clean_label(target_col)} by {col_label}",
                     fontsize=11,
                 )
-                ax.set_xlabel(clean_label(col), fontsize=10)
+                ax.set_xlabel(x_label, fontsize=10)
                 ax.set_ylabel(clean_label(target_col), fontsize=10)
             else:
                 prop_df = (
@@ -237,20 +275,20 @@ def show_groupwise_visualizations(df, demo_cols, target_col=None):
                     data=prop_df, x=x_col, y="proportion", hue=target_col, ax=ax
                 )
                 ax.set_title(
-                    f"{clean_label(target_col)} Proportion per {clean_label(col)}",
+                    f"{clean_label(target_col)} Proportion per {col_label}",
                     fontsize=11,
                 )
-                ax.set_xlabel(clean_label(col), fontsize=10)
+                ax.set_xlabel(x_label, fontsize=10)
                 ax.set_ylabel("Proportion", fontsize=10)
         else:
-            if df_plot[col].dtype == "object" or df_plot[col].nunique() < 10:
+            if df_plot[x_col].dtype == "object" or df_plot[x_col].nunique() < 10:
                 sns.countplot(x=x_col, data=df_plot, ax=ax)
                 ax.set_ylabel("Count", fontsize=10)
             else:
-                sns.histplot(x=df_plot[col], ax=ax, bins=20)
+                sns.histplot(x=df_plot[x_col], ax=ax, bins=20)
                 ax.set_ylabel("Count", fontsize=10)
-            ax.set_title(f"{clean_label(col)}", fontsize=11)
-            ax.set_xlabel(clean_label(col), fontsize=10)
+            ax.set_title(f"{col_label}", fontsize=11)
+            ax.set_xlabel(x_label, fontsize=10)
 
         ax.tick_params(axis="x", rotation=30, labelsize=9)
 
