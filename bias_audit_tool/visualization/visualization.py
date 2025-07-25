@@ -99,8 +99,8 @@ def show_visualizations(df, audit_cols):
                 print(f"[DEBUG] col: {col}")
                 print("[UNIQUE VALUES]", df[col].unique())
                 
-                # Handle age columns with binning
-                if "age" in col.lower() and pd.api.types.is_numeric_dtype(df[col]):
+                # Handle age columns with binning (specifically age_at_index)
+                if "age_at_index" in col.lower() and pd.api.types.is_numeric_dtype(df[col]):
                     df_temp = df.copy()
                     # Create age bins
                     df_temp[f'{col}_binned'] = pd.cut(
@@ -221,8 +221,8 @@ def show_groupwise_visualizations(df, demo_cols, target_col=None):
         
         df_plot = df.copy()
         
-        # Handle age columns with binning
-        if "age" in col.lower() and pd.api.types.is_numeric_dtype(df[col]):
+        # Handle age columns with binning (specifically age_at_index)
+        if "age_at_index" in col.lower() and pd.api.types.is_numeric_dtype(df[col]):
             df_plot[f'{col}_binned'] = pd.cut(
                 df_plot[col], 
                 bins=[0, 25, 50, 75, float('inf')], 
