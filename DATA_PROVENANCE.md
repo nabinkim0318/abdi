@@ -26,8 +26,10 @@ python scripts/generate_demo_data.py
 ```
 
 The generator makes no network calls and does not read external datasets.
-Re-running it with the committed script must reproduce the committed CSV
-and JSON byte-for-byte.
+The generator is deterministic for a fixed seed. Tests verify that
+regenerated data is numerically equivalent to the committed demo and that
+the benchmark JSON matches the committed fixture byte-for-byte. CSV float
+text formatting may vary slightly across platforms.
 
 ## What the demo is for
 
