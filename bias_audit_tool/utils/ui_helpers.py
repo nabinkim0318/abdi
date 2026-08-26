@@ -201,7 +201,15 @@ def run_modeling_and_fairness(df_proc, target_col, selected_demo_cols):
 
                     st.markdown("🧾 Summary of Fairness Disparities")
                     for key, value in fairness_summary.items():
-                        st.markdown(f"- **{key}**: `{value:.4f}`")
+                        if isinstance(value, (int, float)):
+                            st.markdown(f"- **{key}**: `{value:.4f}`")
+                        else:
+                            reason = (
+                                value.get("reason", "undefined")
+                                if isinstance(value, dict)
+                                else value
+                            )
+                            st.markdown(f"- **{key}**: `Undefined` — {reason}")
 
                 except Exception as e:
                     st.warning(f"Could not compute fairness for `{attr}`: {e}")

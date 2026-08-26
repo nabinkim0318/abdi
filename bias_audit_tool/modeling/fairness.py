@@ -212,35 +212,63 @@ def compute_input_fairness(
         "Observed_%": observed_percent
     })
 
-    # Map benchmark (handle missing groups)
+    # Map benchmark (groups absent from the benchmark stay NaN; no fabricated value)
     result_df["Expected_%"] = result_df.index.map(benchmark_distribution)
     missing_groups = result_df["Expected_%"].isnull().sum()
     if missing_groups > 0:
-        print(f"Warning: {missing_groups} groups missing from benchmark. Using 0.01% default.")
-        result_df["Expected_%"] = result_df["Expected_%"].fillna(0.0001)
+        print(
+            f"Warning: {missing_groups} group(s) missing from benchmark. "
+            "These groups will be reported as 'No benchmark available' "
+            "instead of being assigned a fabricated expected value."
+        )
 
-    # Compute disparity metrics
+    # Compute disparity metrics. Groups without a benchmark yield NaN here
+    # (Observed_% / NaN), which is the honest "not computable" value rather
+    # than a synthetic ratio derived from a made-up expected proportion.
     result_df["Disparity_Ratio"] = result_df["Observed_%"] / result_df["Expected_%"]
     result_df["Absolute_Difference"] = abs(result_df["Observed_%"] - result_df["Expected_%"])
-    
-    # Fairness assessment with detailed reasons
+
+    # Fairness assessment with detailed reasons. Unbenchmarked groups (NaN
+    # ratio) are surfaced explicitly instead of being classified as fair/unfair.
     result_df["Fair?"] = result_df["Disparity_Ratio"].apply(
-        lambda x: "Fair" if threshold_low <= x <= threshold_high else "Not Fair"
-    )
-    
-    result_df["Deviation_Type"] = result_df["Disparity_Ratio"].apply(
-        lambda x: "Under-represented" if x < threshold_low 
-                 else "Over-represented" if x > threshold_high
-                 else "Within bounds"
+        lambda x: (
+            "No benchmark available"
+            if pd.isna(x)
+            else "Fair" if threshold_low <= x <= threshold_high else "Not Fair"
+        )
     )
 
-    # Store distribution comparison metrics
-    obs_dist = result_df["Observed_%"].values
-    exp_dist = result_df["Expected_%"].values
-    
-    result_df.attrs["KL_Divergence"] = compare_distributions(obs_dist, exp_dist, "kl")
-    result_df.attrs["Wasserstein_Distance"] = compare_distributions(obs_dist, exp_dist, "wasserstein")
-    result_df.attrs["Total_Variation"] = 0.5 * np.sum(np.abs(obs_dist - exp_dist))
+    result_df["Deviation_Type"] = result_df["Disparity_Ratio"].apply(
+        lambda x: (
+            "No benchmark available"
+            if pd.isna(x)
+            else (
+                "Under-represented"
+                if x < threshold_low
+                else "Over-represented" if x > threshold_high else "Within bounds"
+            )
+        )
+    )
+
+    # Store distribution comparison metrics, computed only over benchmarked
+    # groups: a group with no expected value has nothing to compare against,
+    # and letting its NaN leak in would silently NaN out the whole distance.
+    benchmarked = result_df.dropna(subset=["Expected_%"])
+    obs_dist = benchmarked["Observed_%"].values
+    exp_dist = benchmarked["Expected_%"].values
+
+    if len(exp_dist) > 0:
+        result_df.attrs["KL_Divergence"] = compare_distributions(
+            obs_dist, exp_dist, "kl"
+        )
+        result_df.attrs["Wasserstein_Distance"] = compare_distributions(
+            obs_dist, exp_dist, "wasserstein"
+        )
+        result_df.attrs["Total_Variation"] = 0.5 * np.sum(np.abs(obs_dist - exp_dist))
+    else:
+        result_df.attrs["KL_Divergence"] = "N/A"
+        result_df.attrs["Wasserstein_Distance"] = "N/A"
+        result_df.attrs["Total_Variation"] = "N/A"
 
     # Sort and clean up
     result_df = result_df.sort_values(sort_by, ascending=False).reset_index()
@@ -356,6 +384,11 @@ def display_fairness_summary(result_df: pd.DataFrame, top_n: int = 5):
         st.dataframe(formatted_df, use_container_width=True)
 
 
+def _undefined_metric(reason, **details):
+    """Explicit marker for a fairness metric that could not be computed as a number."""
+    return {"status": "undefined", "reason": reason, **details}
+
+
 def compute_output_fairness(y_true, y_pred, sensitive_features):
     """
     Enhanced output fairness with better error handling and interpretability.
@@ -395,24 +428,40 @@ def compute_output_fairness(y_true, y_pred, sensitive_features):
         disparity = abs(max_val - min_val)
         disparity_summary[f"{metric} disparity"] = disparity
         
-        # Add ratio-based disparity for better interpretation
+        # Add ratio-based disparity for better interpretation. A zero minimum
+        # makes the ratio mathematically undefined (division by zero), so we
+        # surface that explicitly instead of a bare, unexplained `inf`.
         if min_val > 0:
             disparity_summary[f"{metric} ratio"] = max_val / min_val
         else:
-            disparity_summary[f"{metric} ratio"] = np.inf
+            disparity_summary[f"{metric} ratio"] = _undefined_metric(
+                "Ratio is undefined: the minimum group value is 0 "
+                "(division by zero).",
+                min_value=min_val,
+                max_value=max_val,
+            )
 
-    # Fairlearn-specific metrics with error handling
+    # Fairlearn-specific metrics. `sensitive_features` must be passed as a
+    # keyword argument; this Fairlearn version makes it keyword-only.
     try:
-        dp_diff = demographic_parity_difference(y_true, y_pred, sensitive_features)
+        dp_diff = demographic_parity_difference(
+            y_true, y_pred, sensitive_features=sensitive_features
+        )
         disparity_summary["Demographic Parity Difference"] = dp_diff
     except Exception as e:
-        disparity_summary["Demographic Parity Difference"] = f"Error: {str(e)}"
+        warnings.warn(f"Demographic Parity Difference could not be computed: {e}")
+        disparity_summary["Demographic Parity Difference"] = _undefined_metric(
+            str(e)
+        )
 
     try:
-        eo_diff = equalized_odds_difference(y_true, y_pred, sensitive_features)
+        eo_diff = equalized_odds_difference(
+            y_true, y_pred, sensitive_features=sensitive_features
+        )
         disparity_summary["Equalized Odds Difference"] = eo_diff
     except Exception as e:
-        disparity_summary["Equalized Odds Difference"] = f"Error: {str(e)}"
+        warnings.warn(f"Equalized Odds Difference could not be computed: {e}")
+        disparity_summary["Equalized Odds Difference"] = _undefined_metric(str(e))
 
     # Convert to plain language and sort by severity
     disparity_plain = {
