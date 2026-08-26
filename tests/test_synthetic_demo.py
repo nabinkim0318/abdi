@@ -6,9 +6,19 @@ from io import StringIO
 from pathlib import Path
 
 import pandas as pd
+import pytest
 from sklearn.metrics import roc_auc_score
 
+from bias_audit_tool.modeling.fairness import assess_group_support
+from bias_audit_tool.modeling.fairness import bootstrap_output_fairness
+from bias_audit_tool.modeling.fairness import compute_group_support
 from bias_audit_tool.modeling.fairness import compute_output_fairness
+from bias_audit_tool.modeling.fairness import SUPPORT_COL_N
+from bias_audit_tool.modeling.fairness import SUPPORT_COL_NEGATIVE_LABELS
+from bias_audit_tool.modeling.fairness import SUPPORT_COL_POSITIVE_LABELS
+from bias_audit_tool.modeling.fairness import SUPPORT_COL_PREDICTED_POSITIVES
+from bias_audit_tool.modeling.fairness import SUPPORT_COL_SELECTION_DENOMINATOR
+from bias_audit_tool.modeling.fairness import SUPPORT_TABLE_COLUMNS
 from bias_audit_tool.modeling.target_validation import preferred_target_column
 from bias_audit_tool.modeling.target_validation import validate_classification_target
 from bias_audit_tool.preprocessing.modeling_pipeline import run_modeling_pipeline
@@ -220,6 +230,45 @@ def test_demo_runs_through_modeling_pipeline_with_finite_metrics():
     eo = disparities["Equalized Odds Difference"]
     assert isinstance(dp, (int, float)) and math.isfinite(float(dp))
     assert isinstance(eo, (int, float)) and math.isfinite(float(eo))
+
+    unique_labels = set(pd.unique(pd.Series(result.y_test).dropna()))
+    assert unique_labels <= {0, 1}
+    support = compute_group_support(
+        result.y_test, result.y_pred, result.sensitive_test
+    )
+    assert list(support.columns) == SUPPORT_TABLE_COLUMNS
+    assert support[SUPPORT_COL_N].sum() == len(result.y_test)
+    assert (
+        support[SUPPORT_COL_SELECTION_DENOMINATOR] == support[SUPPORT_COL_N]
+    ).all()
+    assert SUPPORT_COL_POSITIVE_LABELS in support.columns
+    assert SUPPORT_COL_NEGATIVE_LABELS in support.columns
+    assert SUPPORT_COL_PREDICTED_POSITIVES in support.columns
+    assert set(support["Group"]) <= {"Group A", "Group B"}
+    support_warnings = assess_group_support(support)
+    assert isinstance(support_warnings, list)
+    bootstrap = bootstrap_output_fairness(
+        result.y_test,
+        result.y_pred,
+        result.sensitive_test,
+        n_bootstrap=200,
+        random_state=42,
+    )
+    for key in (
+        "Demographic Parity Difference",
+        "Equalized Odds Difference",
+    ):
+        item = bootstrap[key]
+        assert item["estimate"] == pytest.approx(disparities[key])
+        assert item["n_requested"] == 200
+        assert 0 <= item["n_valid"] <= 200
+        if item["status"] == "ok":
+            assert math.isfinite(float(item["ci_lower"]))
+            assert math.isfinite(float(item["ci_upper"]))
+            assert item["ci_lower"] <= item["ci_upper"]
+        else:
+            assert item["ci_lower"] is None
+            assert item["reason"]
 
     fig_cm, matrix = build_confusion_matrix_figure(result.y_test, result.y_pred)
     assert fig_cm is not None

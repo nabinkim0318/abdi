@@ -7,11 +7,13 @@ from matplotlib import pyplot as plt
 
 from bias_audit_tool.modeling import fairness as fairness_mod
 from bias_audit_tool.modeling.fairness import ALL_GROUPS_WITHIN_THRESHOLD_MESSAGE
+from bias_audit_tool.modeling.fairness import BOOTSTRAP_CI_CAVEAT
 from bias_audit_tool.modeling.fairness import CLAIM_SAFETY_CAVEAT
 from bias_audit_tool.modeling.fairness import compute_input_fairness
 from bias_audit_tool.modeling.fairness import compute_output_fairness
 from bias_audit_tool.modeling.fairness import FAIRNESS_METRIC_CAVEAT
 from bias_audit_tool.modeling.fairness import GROUP_COL
+from bias_audit_tool.modeling.fairness import GROUP_SUPPORT_CAPTION
 from bias_audit_tool.modeling.fairness import interpret_fairness_metrics
 from bias_audit_tool.modeling.fairness import NO_BENCHMARK_AVAILABLE
 from bias_audit_tool.modeling.fairness import NO_BENCHMARK_SELECTED_MESSAGE
@@ -363,3 +365,10 @@ def test_public_fairness_wording_is_criterion_based_not_a_verdict():
         "unbiased, non-discriminatory, or legally compliant."
     )
     assert NO_BENCHMARK_SELECTED_MESSAGE.startswith("No benchmark selected.")
+    assert "population" not in GROUP_SUPPORT_CAPTION.lower() or (
+        "not population" in GROUP_SUPPORT_CAPTION.lower()
+    )
+    assert "held-out" in GROUP_SUPPORT_CAPTION.lower()
+    assert "do not establish that a model is fair" in BOOTSTRAP_CI_CAVEAT.lower()
+    assert "Not Fair" not in BOOTSTRAP_CI_CAVEAT
+    assert "statistically fair" not in BOOTSTRAP_CI_CAVEAT.lower()

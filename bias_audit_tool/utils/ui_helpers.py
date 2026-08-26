@@ -9,8 +9,16 @@ from bias_audit_tool.data.validation import DataValidationError
 from bias_audit_tool.data.validation import describe_class_distribution
 from bias_audit_tool.data.validation import SEVERITY_ERROR
 from bias_audit_tool.data.validation import SEVERITY_WARNING
+from bias_audit_tool.modeling.fairness import assess_group_support
+from bias_audit_tool.modeling.fairness import BOOTSTRAP_CI_CAVEAT
+from bias_audit_tool.modeling.fairness import bootstrap_output_fairness
+from bias_audit_tool.modeling.fairness import compute_group_support
 from bias_audit_tool.modeling.fairness import compute_output_fairness
+from bias_audit_tool.modeling.fairness import GROUP_SUPPORT_CAPTION
+from bias_audit_tool.modeling.fairness import GROUP_SUPPORT_SECTION_TITLE
 from bias_audit_tool.modeling.fairness import render_fairness_caveats
+from bias_audit_tool.modeling.fairness import WARNING_ZERO_NEGATIVE_LABELS
+from bias_audit_tool.modeling.fairness import WARNING_ZERO_POSITIVE_LABELS
 from bias_audit_tool.modeling.target_validation import UnsupportedTargetError
 from bias_audit_tool.modeling.target_validation import validate_classification_target
 from bias_audit_tool.preprocessing.modeling_pipeline import (
@@ -209,18 +217,39 @@ def run_modeling_and_fairness(
         render_fairness_caveats()
 
         try:
-            metric_frame, fairness_summary = compute_output_fairness(
-                y_true=results.y_test,
-                y_pred=results.y_pred,
-                sensitive_features=results.sensitive_test,
-            )
+            with st.spinner(
+                "Computing held-out group support and DP/EO bootstrap "
+                "intervals..."
+            ):
+                metric_frame, fairness_summary = compute_output_fairness(
+                    y_true=results.y_test,
+                    y_pred=results.y_pred,
+                    sensitive_features=results.sensitive_test,
+                )
+                support_df = compute_group_support(
+                    y_true=results.y_test,
+                    y_pred=results.y_pred,
+                    sensitive_features=results.sensitive_test,
+                )
+                support_warnings = assess_group_support(support_df)
+                bootstrap_results = bootstrap_output_fairness(
+                    y_true=results.y_test,
+                    y_pred=results.y_pred,
+                    sensitive_features=results.sensitive_test,
+                )
+
+            render_group_support_section(support_df, support_warnings)
 
             st.markdown("📊 Group-wise Metrics")
             st.dataframe(metric_frame.by_group)
 
             st.markdown("🧾 Summary of group disparities")
             for key, value in fairness_summary.items():
-                if isinstance(value, (int, float)):
+                if key in bootstrap_results:
+                    render_disparity_with_bootstrap(
+                        key, value, bootstrap_results[key]
+                    )
+                elif isinstance(value, (int, float)):
                     st.markdown(f"- **{key}**: `{value:.4f}`")
                 else:
                     reason = (
@@ -229,6 +258,8 @@ def run_modeling_and_fairness(
                         else value
                     )
                     st.markdown(f"- **{key}**: `Undefined` — {reason}")
+
+            st.caption(BOOTSTRAP_CI_CAVEAT)
 
         except Exception as e:
             st.warning(f"Could not compute fairness for `{group_col}`: {e}")
@@ -263,3 +294,62 @@ def _render_class_distribution(y, target_name):
         )
     if rows:
         st.dataframe(pd.DataFrame(rows), use_container_width=True)
+
+
+def render_group_support_section(support_df, support_warnings):
+    """Render held-out group-support counts and sparse-support warnings."""
+    st.markdown(f"### {GROUP_SUPPORT_SECTION_TITLE}")
+    st.caption(GROUP_SUPPORT_CAPTION)
+    st.dataframe(support_df, use_container_width=True)
+    render_group_support_warnings(support_warnings)
+
+
+def render_group_support_warnings(support_warnings):
+    """Render structured support warnings without fairness verdicts."""
+    unsupported = {
+        WARNING_ZERO_POSITIVE_LABELS,
+        WARNING_ZERO_NEGATIVE_LABELS,
+    }
+    for item in support_warnings:
+        message = item.get("message", "")
+        group = item.get("group")
+        prefix = f"**{group}.** " if group is not None else ""
+        text = f"{prefix}{message}"
+        if item.get("code") in unsupported:
+            st.warning(text)
+        else:
+            st.info(text)
+
+
+def render_disparity_with_bootstrap(key, point_estimate, bootstrap_result):
+    """Render a Fairlearn point estimate plus optional bootstrap interval."""
+    if isinstance(point_estimate, (int, float)):
+        st.markdown(f"- **{key}**: `{point_estimate:.4f}`")
+    elif isinstance(point_estimate, dict):
+        reason = point_estimate.get("reason", "undefined")
+        st.markdown(f"- **{key}**: `Undefined` — {reason}")
+        return
+    else:
+        st.markdown(f"- **{key}**: `{point_estimate}`")
+        return
+
+    if not isinstance(bootstrap_result, dict):
+        return
+
+    n_requested = bootstrap_result.get("n_requested")
+    n_valid = bootstrap_result.get("n_valid")
+    if bootstrap_result.get("status") == "ok":
+        ci_lower = bootstrap_result["ci_lower"]
+        ci_upper = bootstrap_result["ci_upper"]
+        level = bootstrap_result.get("confidence_level", 0.95)
+        pct = int(round(level * 100))
+        st.markdown(f"  - {pct}% bootstrap CI: `[{ci_lower:.4f}, {ci_upper:.4f}]`")
+    else:
+        reason = bootstrap_result.get("reason", "undefined")
+        st.markdown(f"  - bootstrap CI: `unavailable` — {reason}")
+
+    if n_valid is not None and n_requested is not None:
+        st.markdown(f"  - valid replicates: `{n_valid} / {n_requested}`")
+
+    for item in bootstrap_result.get("warnings") or []:
+        st.caption(item.get("message", ""))

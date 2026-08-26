@@ -15,6 +15,8 @@ The bundled demo dataset is fully synthetic. See [DATA_PROVENANCE.md](DATA_PROVE
 - Optional inclusion or exclusion of the selected sensitive attribute, including its direct encodings, as a model feature
 - Held-out classification metrics, ROC AUC, a confusion matrix, an ROC curve, and permutation feature importance
 - Group-wise fairness diagnostics, including Demographic Parity Difference and Equalized Odds Difference
+- Held-out group support counts and sparse-group warnings accompany model fairness metrics
+- Percentile-bootstrap uncertainty intervals for Demographic Parity Difference and Equalized Odds Difference, conditional on the fitted model and held-out predictions
 - Input guardrails detect duplicate CSV headers and non-finite numeric values before modeling.
 - The binary modeling path checks minimum dataset/class support and warns on extreme class imbalance.
 - Uploaded datasets are tracked by content fingerprint so changed files with reused filenames do not reuse stale analysis state.
@@ -25,6 +27,7 @@ The bundled demo dataset is fully synthetic. See [DATA_PROVENANCE.md](DATA_PROVE
 - Exploratory diagnostic only — not a legal, regulatory, or compliance determination
 - Supervised modeling is binary classification only
 - One selected sensitive attribute is audited at a time
+- Group-support thresholds and bootstrap intervals are descriptive stability diagnostics, not fairness or compliance determinations
 - Sensitive-attribute recommendations are heuristic and require human review
 - Excluding the selected attribute removes its direct encodings, but does not remove proxy variables
 - Benchmark-relative representation analysis requires a user-supplied expected distribution
@@ -69,7 +72,7 @@ Use the committed synthetic demo, not any external clinical extract.
 3. Apply the suggested preprocessing, then choose **`demo_group_mapped`** as the sensitive attribute. Exploratory one-hot encoding plus the existing dummy-merge heuristic reconstructs `demo_group` as `demo_group_mapped`. `age_band_*` dummy columns may also appear as candidates because the name contains `age` — use `demo_group_mapped` for this walkthrough.
 4. For representation analysis, paste the synthetic demonstration benchmark from `bias_audit_tool/sample_data/demo_benchmark.json` (proportions that sum to 1.0). This is a software fixture, not a population prevalence.
 5. Enable modeling and select **`outcome`** as the binary target.
-6. Run model evaluation. Inspect the classification report, ROC-AUC, Confusion Matrix, ROC Curve, permutation importance, group-wise fairness diagnostics, DP Difference, and EO Difference.
+6. Run model evaluation. Inspect the classification report, ROC-AUC, Confusion Matrix, ROC Curve, permutation importance, held-out group support, group-wise fairness diagnostics, DP Difference, EO Difference, and the DP/EO bootstrap intervals.
 
 Do not interpret demo group differences as real-world demographic findings.
 
@@ -103,6 +106,8 @@ bias_audit_tool/
 
 tests/
 ├── test_fairness.py
+├── test_fairness_bootstrap.py
+├── test_group_support.py
 ├── test_model_evaluation_plots.py
 ├── test_modeling_pipeline.py
 ├── test_preprocess.py
