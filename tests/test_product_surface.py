@@ -43,6 +43,7 @@ def test_readme_does_not_advertise_removed_product_claims():
     assert "test_failure.py" not in readme
     assert "confusion matrix" in readme
     assert "roc curve" in readme
+    assert "held-out group support" in readme
     assert "does not remove proxy variables" in readme
     assert "synthetic" in readme
     assert "clinical_dataset_breast_cancer" not in readme
@@ -76,6 +77,29 @@ def test_live_app_defaults_target_with_binary_preference_helper():
     assert "begin_new_upload" in app_source
     assert "uploader_widget_key" in app_source
     assert "uploaded_file.name !=" not in app_source
+
+
+def test_held_out_fairness_ui_wires_group_support_not_representation_path():
+    helpers = (ROOT / "bias_audit_tool" / "utils" / "ui_helpers.py").read_text(
+        encoding="utf-8"
+    )
+    ui_blocks = (
+        ROOT / "bias_audit_tool" / "visualization" / "ui_blocks.py"
+    ).read_text(encoding="utf-8")
+    assert "compute_group_support" in helpers
+    assert "assess_group_support" in helpers
+    assert "bootstrap_output_fairness" in helpers
+    assert "GROUP_SUPPORT_SECTION_TITLE" in helpers
+    assert "BOOTSTRAP_CI_CAVEAT" in helpers
+    assert "compute_group_support" not in ui_blocks
+    assert "bootstrap_output_fairness" not in ui_blocks
+    for banned in (
+        "Fair with 95% confidence",
+        "statistically fair",
+        "unbiased",
+        "passes fairness",
+    ):
+        assert banned not in helpers
 
 
 def test_plot_distribution_comparison_uses_stable_group_column():

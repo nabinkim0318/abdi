@@ -46,6 +46,64 @@ CLAIM_SAFETY_CAVEAT = (
     "unbiased, non-discriminatory, or legally compliant."
 )
 
+# Positive class for selection rate, precision/recall, DP, EO, and
+# group-support counts. The live modeling path encodes string targets to
+# 0/1 via LabelEncoder and leaves numeric 0/1 labels unchanged, so this
+# fairness layer receives binary labels whose positive class is 1. That
+# matches Fairlearn's selection_rate default (`pos_label=1`) and sklearn
+# binary metrics. Do not assume raw user labels were originally integer 1
+# before that encoding step.
+DEFAULT_POSITIVE_LABEL = 1
+
+# Heuristic stability cutoffs for held-out group-support warnings.
+# These are not statistical-validity, legal, or fairness criteria.
+MIN_GROUP_N_WARNING = 30
+MIN_CLASS_SUPPORT_WARNING = 10
+
+SUPPORT_COL_N = "n"
+SUPPORT_COL_POSITIVE_LABELS = "Positive Labels"
+SUPPORT_COL_NEGATIVE_LABELS = "Negative Labels"
+SUPPORT_COL_PREDICTED_POSITIVES = "Predicted Positives"
+SUPPORT_COL_PREDICTED_NEGATIVES = "Predicted Negatives"
+SUPPORT_COL_SELECTION_DENOMINATOR = "Selection Rate Denominator"
+SUPPORT_TABLE_COLUMNS = [
+    GROUP_COL,
+    SUPPORT_COL_N,
+    SUPPORT_COL_POSITIVE_LABELS,
+    SUPPORT_COL_NEGATIVE_LABELS,
+    SUPPORT_COL_PREDICTED_POSITIVES,
+    SUPPORT_COL_PREDICTED_NEGATIVES,
+    SUPPORT_COL_SELECTION_DENOMINATOR,
+]
+
+WARNING_SMALL_GROUP_N = "small_group_n"
+WARNING_FEW_POSITIVE_LABELS = "few_positive_labels"
+WARNING_FEW_NEGATIVE_LABELS = "few_negative_labels"
+WARNING_ZERO_POSITIVE_LABELS = "zero_positive_labels"
+WARNING_ZERO_NEGATIVE_LABELS = "zero_negative_labels"
+WARNING_MISSING_SENSITIVE_EXCLUDED = "missing_sensitive_values_excluded"
+WARNING_SPARSE_BOOTSTRAP = "sparse_support_bootstrap"
+WARNING_HIGH_INVALID_BOOTSTRAP = "high_invalid_bootstrap_fraction"
+
+GROUP_SUPPORT_CAPTION = (
+    "Counts below describe the held-out evaluation rows used to compute "
+    "these group metrics. They are held-out evaluation-set support, not "
+    "population sizes."
+)
+GROUP_SUPPORT_SECTION_TITLE = "Group support on held-out evaluation set"
+
+BOOTSTRAP_METHOD = "percentile bootstrap over held-out rows"
+DEFAULT_N_BOOTSTRAP = 500
+DEFAULT_BOOTSTRAP_RANDOM_STATE = 42
+DEFAULT_CONFIDENCE_LEVEL = 0.95
+BOOTSTRAP_HIGH_INVALID_FRACTION = 0.20
+INSUFFICIENT_VALID_BOOTSTRAP_REASON = "insufficient valid bootstrap replicates"
+BOOTSTRAP_CI_CAVEAT = (
+    "Bootstrap intervals reflect variability from resampling the held-out "
+    "evaluation rows with the fitted model fixed. They do not establish "
+    "that a model is fair or compliant."
+)
+
 
 def _distance_alignment_label(val, cuts, severe_label):
     """Map a numeric distance to a caption; non-numeric values stay N/A."""
@@ -448,31 +506,575 @@ def _undefined_metric(reason, **details):
     return {"status": "undefined", "reason": reason, **details}
 
 
-def compute_output_fairness(y_true, y_pred, sensitive_features):
+def _preserve_group_label(value):
+    """Convert numpy scalars to Python scalars without stringifying labels."""
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
+
+
+def _prepare_held_out_fairness_arrays(y_true, y_pred, sensitive_features):
     """
-    Enhanced output fairness with better error handling and interpretability.
+    Align held-out arrays and drop rows with missing sensitive values.
+
+    Fairlearn's MetricFrame grouping omits missing sensitive labels
+    (pandas-style dropna). The same rows are excluded from MetricFrame,
+    group support, and bootstrap so those views describe the same
+    observations. Missing group labels are never dropped from only one
+    of them.
     """
-    # Input validation
-    y_true, y_pred, sensitive_features = map(
-        np.array, [y_true, y_pred, sensitive_features]
-    )
+    y_true = np.asarray(y_true)
+    y_pred = np.asarray(y_pred)
+    sensitive_features = np.asarray(sensitive_features)
+
+    if y_true.ndim != 1:
+        y_true = np.ravel(y_true)
+    if y_pred.ndim != 1:
+        y_pred = np.ravel(y_pred)
+    if sensitive_features.ndim != 1:
+        raise ValueError("sensitive_features must be 1-dimensional")
 
     if not (len(y_true) == len(y_pred) == len(sensitive_features)):
         raise ValueError("All input arrays must have the same length")
 
-    if sensitive_features.ndim != 1:
-        raise ValueError("sensitive_features must be 1-dimensional")
+    missing = pd.isna(sensitive_features)
+    n_missing = int(np.sum(missing))
+    if n_missing:
+        keep = ~missing
+        y_true = y_true[keep]
+        y_pred = y_pred[keep]
+        sensitive_features = sensitive_features[keep]
+
+    if len(y_true) == 0:
+        raise ValueError(
+            "No held-out rows remain after excluding missing sensitive " "values"
+        )
+
+    return y_true, y_pred, sensitive_features, n_missing
+
+
+def _observed_group_labels(sensitive_features):
+    """Unique held-out group labels, first-appearance order, missing omitted."""
+    labels = []
+    seen = set()
+    for raw in sensitive_features:
+        if pd.isna(raw):
+            continue
+        label = _preserve_group_label(raw)
+        key = (type(label), label)
+        if key in seen:
+            continue
+        seen.add(key)
+        labels.append(label)
+    return labels
+
+
+def _group_key(value):
+    label = _preserve_group_label(value)
+    return (type(label), label)
+
+
+def compute_group_support(
+    y_true,
+    y_pred,
+    sensitive_features,
+    positive_label=DEFAULT_POSITIVE_LABEL,
+):
+    """
+    Held-out per-group support for model fairness metrics.
+
+    Counts describe the same evaluation-set rows used by
+    ``compute_output_fairness`` (after excluding missing sensitive
+    values). They are not population sizes.
+
+    ``positive_label`` is the class treated as the positive outcome for
+    label counts, predicted-positive counts, selection rate, precision,
+    recall, Demographic Parity, and Equalized Odds. The live path uses
+    binary 0/1 labels with positive class 1.
+
+    Returns:
+        DataFrame with one row per observed group and the columns in
+        ``SUPPORT_TABLE_COLUMNS``. ``attrs['n_missing_sensitive']`` is
+        the number of held-out rows excluded for a missing group label.
+        ``attrs['positive_label']`` records the positive class used.
+    """
+    y_true, y_pred, sensitive_features, n_missing = (
+        _prepare_held_out_fairness_arrays(y_true, y_pred, sensitive_features)
+    )
+
+    frame = pd.DataFrame(
+        {
+            "_y_true": y_true,
+            "_y_pred": y_pred,
+            GROUP_COL: [_preserve_group_label(v) for v in sensitive_features],
+        }
+    )
+    rows = []
+    for group, sub in frame.groupby(GROUP_COL, sort=False, dropna=True):
+        n = int(len(sub))
+        n_positive = int((sub["_y_true"] == positive_label).sum())
+        n_predicted_positive = int((sub["_y_pred"] == positive_label).sum())
+        rows.append(
+            {
+                GROUP_COL: group,
+                SUPPORT_COL_N: n,
+                SUPPORT_COL_POSITIVE_LABELS: n_positive,
+                SUPPORT_COL_NEGATIVE_LABELS: n - n_positive,
+                SUPPORT_COL_PREDICTED_POSITIVES: n_predicted_positive,
+                SUPPORT_COL_PREDICTED_NEGATIVES: n - n_predicted_positive,
+                SUPPORT_COL_SELECTION_DENOMINATOR: n,
+            }
+        )
+
+    result = pd.DataFrame(rows, columns=SUPPORT_TABLE_COLUMNS)
+    result.attrs["n_missing_sensitive"] = n_missing
+    result.attrs["positive_label"] = positive_label
+    return result
+
+
+def _support_warning(group, code, message, **details):
+    payload = {"group": group, "code": code, "message": message}
+    payload.update(details)
+    return payload
+
+
+def assess_group_support(
+    support_df,
+    min_group_n=MIN_GROUP_N_WARNING,
+    min_class_support=MIN_CLASS_SUPPORT_WARNING,
+):
+    """
+    Structured heuristic warnings for held-out group support.
+
+    Thresholds such as ``min_group_n=30`` and ``min_class_support=10``
+    are stability heuristics, not statistical-validity cutoffs and not
+    fairness verdicts.
+    """
+    warnings_out = []
+    if support_df is None:
+        return warnings_out
+
+    n_missing = int(support_df.attrs.get("n_missing_sensitive") or 0)
+    if n_missing:
+        warnings_out.append(
+            _support_warning(
+                None,
+                WARNING_MISSING_SENSITIVE_EXCLUDED,
+                "Held-out rows with a missing sensitive-attribute value "
+                "were excluded from group metrics, matching Fairlearn "
+                "grouping. They are not shown as a separate group.",
+                n_missing=n_missing,
+            )
+        )
+
+    if support_df.empty:
+        return warnings_out
+
+    for _, row in support_df.iterrows():
+        group = row[GROUP_COL]
+        n = int(row[SUPPORT_COL_N])
+        n_positive = int(row[SUPPORT_COL_POSITIVE_LABELS])
+        n_negative = int(row[SUPPORT_COL_NEGATIVE_LABELS])
+
+        if n < min_group_n:
+            warnings_out.append(
+                _support_warning(
+                    group,
+                    WARNING_SMALL_GROUP_N,
+                    f"Small held-out group (n={n} < {min_group_n}); "
+                    "group metrics may be unstable. This is a heuristic "
+                    "stability warning, not a validity cutoff.",
+                    n=n,
+                    threshold=min_group_n,
+                )
+            )
+
+        if n_positive == 0:
+            warnings_out.append(
+                _support_warning(
+                    group,
+                    WARNING_ZERO_POSITIVE_LABELS,
+                    "This group has 0 positive true labels on the "
+                    "held-out set, so true-positive-rate / recall-style "
+                    "Equalized Odds components are mathematically "
+                    "unsupported. Any numeric EO value should be read "
+                    "with that support context.",
+                    n_positive=n_positive,
+                )
+            )
+        elif n_positive < min_class_support:
+            warnings_out.append(
+                _support_warning(
+                    group,
+                    WARNING_FEW_POSITIVE_LABELS,
+                    "True-positive-based metrics for this group may be "
+                    f"unstable (positive labels={n_positive} < "
+                    f"{min_class_support}). Heuristic stability warning, "
+                    "not a validity cutoff.",
+                    n_positive=n_positive,
+                    threshold=min_class_support,
+                )
+            )
+
+        if n_negative == 0:
+            warnings_out.append(
+                _support_warning(
+                    group,
+                    WARNING_ZERO_NEGATIVE_LABELS,
+                    "This group has 0 negative true labels on the "
+                    "held-out set, so false-positive-rate-style "
+                    "Equalized Odds components are mathematically "
+                    "unsupported. Any numeric EO value should be read "
+                    "with that support context.",
+                    n_negative=n_negative,
+                )
+            )
+        elif n_negative < min_class_support:
+            warnings_out.append(
+                _support_warning(
+                    group,
+                    WARNING_FEW_NEGATIVE_LABELS,
+                    "False-positive-based metrics for this group may be "
+                    f"unstable (negative labels={n_negative} < "
+                    f"{min_class_support}). Heuristic stability warning, "
+                    "not a validity cutoff.",
+                    n_negative=n_negative,
+                    threshold=min_class_support,
+                )
+            )
+
+    return warnings_out
+
+
+def minimum_valid_bootstrap_replicates(n_requested):
+    """Require at least 100 valid draws and at least 50% of requested draws."""
+    return max(100, int(np.ceil(0.5 * n_requested)))
+
+
+def _is_finite_number(value):
+    return isinstance(value, (int, float, np.integer, np.floating)) and np.isfinite(
+        value
+    )
+
+
+def _fairlearn_metric_or_undefined(metric_fn, y_true, y_pred, sensitive_features):
+    try:
+        value = metric_fn(y_true, y_pred, sensitive_features=sensitive_features)
+    except Exception as e:
+        return _undefined_metric(str(e))
+    if not _is_finite_number(value):
+        return _undefined_metric(
+            "Metric result was not a finite number.",
+            value=value,
+        )
+    return float(value)
+
+
+def _replicate_groups_complete(sensitive_sample, required_groups):
+    present = {_group_key(g) for g in _observed_group_labels(sensitive_sample)}
+    required = {_group_key(g) for g in required_groups}
+    return required.issubset(present)
+
+
+def _replicate_has_eo_class_support(y_true_sample, sensitive_sample, positive_label):
+    frame = pd.DataFrame(
+        {
+            "_y_true": y_true_sample,
+            GROUP_COL: [_preserve_group_label(v) for v in sensitive_sample],
+        }
+    )
+    for _, sub in frame.groupby(GROUP_COL, sort=False, dropna=True):
+        n_positive = int((sub["_y_true"] == positive_label).sum())
+        n_negative = int(len(sub) - n_positive)
+        if n_positive == 0 or n_negative == 0:
+            return False
+    return True
+
+
+def _ok_bootstrap_result(
+    estimate,
+    ci_lower,
+    ci_upper,
+    confidence_level,
+    n_requested,
+    n_valid,
+    warnings_out=None,
+):
+    return {
+        "status": "ok",
+        "estimate": estimate,
+        "ci_lower": ci_lower,
+        "ci_upper": ci_upper,
+        "confidence_level": confidence_level,
+        "n_requested": n_requested,
+        "n_valid": n_valid,
+        "method": BOOTSTRAP_METHOD,
+        "warnings": list(warnings_out or []),
+    }
+
+
+def _unavailable_bootstrap_result(
+    reason,
+    n_requested,
+    n_valid,
+    confidence_level,
+    estimate=None,
+    warnings_out=None,
+    **details,
+):
+    payload = _undefined_metric(
+        reason,
+        estimate=estimate,
+        ci_lower=None,
+        ci_upper=None,
+        confidence_level=confidence_level,
+        n_requested=n_requested,
+        n_valid=n_valid,
+        method=BOOTSTRAP_METHOD,
+        valid_bootstrap_replicates=n_valid,
+        requested_bootstrap_replicates=n_requested,
+        warnings=list(warnings_out or []),
+        **details,
+    )
+    return payload
+
+
+def _bootstrap_support_warnings(support_df, n_valid, n_requested):
+    warnings_out = []
+    support_warnings = assess_group_support(support_df)
+    sparse_codes = {
+        WARNING_SMALL_GROUP_N,
+        WARNING_FEW_POSITIVE_LABELS,
+        WARNING_FEW_NEGATIVE_LABELS,
+        WARNING_ZERO_POSITIVE_LABELS,
+        WARNING_ZERO_NEGATIVE_LABELS,
+    }
+    if any(item["code"] in sparse_codes for item in support_warnings):
+        warnings_out.append(
+            _support_warning(
+                None,
+                WARNING_SPARSE_BOOTSTRAP,
+                "Held-out groups or class counts are sparse, so the "
+                "bootstrap interval can be unstable. This is descriptive "
+                "support context, not a pass/fail cutoff.",
+            )
+        )
+    if n_requested > 0 and (1.0 - (n_valid / n_requested)) > (
+        BOOTSTRAP_HIGH_INVALID_FRACTION
+    ):
+        warnings_out.append(
+            _support_warning(
+                None,
+                WARNING_HIGH_INVALID_BOOTSTRAP,
+                "A large share of bootstrap replicates were invalid "
+                f"({n_valid} valid of {n_requested} requested) because "
+                "required group or class support disappeared. This is "
+                "descriptive, not a pass/fail cutoff.",
+                n_valid=n_valid,
+                n_requested=n_requested,
+            )
+        )
+    return warnings_out
+
+
+def bootstrap_fairness_metric(
+    y_true,
+    y_pred,
+    sensitive_features,
+    metric_fn,
+    *,
+    n_bootstrap=DEFAULT_N_BOOTSTRAP,
+    confidence_level=DEFAULT_CONFIDENCE_LEVEL,
+    random_state=DEFAULT_BOOTSTRAP_RANDOM_STATE,
+    min_valid_replicates=None,
+    positive_label=DEFAULT_POSITIVE_LABEL,
+    require_eo_class_support=False,
+):
+    """
+    Percentile bootstrap CI for one held-out fairness statistic.
+
+    Resamples the existing ``(y_true, y_pred, sensitive_features)``
+    tuples with replacement. The fitted model is not retrained. The
+    interval estimates sampling variability of the statistic on the
+    held-out evaluation rows, conditional on the already-trained model
+    and its predictions. It is not training uncertainty, a population
+    causal interval, a fairness guarantee, or a regulatory CI.
+
+    Replicates that lose a required group (or, for Equalized Odds, a
+    required positive/negative class inside a group) are marked invalid
+    and excluded from the percentile calculation. They are not replaced
+    with 0, inf, or any other fabricated value.
+    """
+    if n_bootstrap < 1:
+        raise ValueError("n_bootstrap must be at least 1")
+    if not 0.0 < confidence_level < 1.0:
+        raise ValueError("confidence_level must be between 0 and 1")
+
+    y_true, y_pred, sensitive_features, _n_missing = (
+        _prepare_held_out_fairness_arrays(y_true, y_pred, sensitive_features)
+    )
+    required_groups = _observed_group_labels(sensitive_features)
+    if min_valid_replicates is None:
+        min_valid_replicates = minimum_valid_bootstrap_replicates(n_bootstrap)
+
+    point = _fairlearn_metric_or_undefined(
+        metric_fn, y_true, y_pred, sensitive_features
+    )
+    estimate = None if isinstance(point, dict) else point
+    support_df = compute_group_support(
+        y_true, y_pred, sensitive_features, positive_label=positive_label
+    )
+
+    rng = np.random.default_rng(random_state)
+    n = len(y_true)
+    valid_values = []
+    for _ in range(n_bootstrap):
+        idx = rng.integers(0, n, size=n)
+        y_b = y_true[idx]
+        pred_b = y_pred[idx]
+        sens_b = sensitive_features[idx]
+        if not _replicate_groups_complete(sens_b, required_groups):
+            continue
+        if require_eo_class_support and not _replicate_has_eo_class_support(
+            y_b, sens_b, positive_label
+        ):
+            continue
+        value = _fairlearn_metric_or_undefined(metric_fn, y_b, pred_b, sens_b)
+        if isinstance(value, dict):
+            continue
+        valid_values.append(value)
+
+    n_valid = len(valid_values)
+    extra_warnings = _bootstrap_support_warnings(support_df, n_valid, n_bootstrap)
+
+    if n_valid < min_valid_replicates:
+        return _unavailable_bootstrap_result(
+            INSUFFICIENT_VALID_BOOTSTRAP_REASON,
+            n_requested=n_bootstrap,
+            n_valid=n_valid,
+            confidence_level=confidence_level,
+            estimate=estimate,
+            warnings_out=extra_warnings,
+            min_valid_replicates=min_valid_replicates,
+        )
+
+    alpha = 1.0 - confidence_level
+    lower_q = 100.0 * (alpha / 2.0)
+    upper_q = 100.0 * (1.0 - alpha / 2.0)
+    ci_lower, ci_upper = np.percentile(valid_values, [lower_q, upper_q])
+    if estimate is None:
+        reason = (
+            point.get("reason", "undefined")
+            if isinstance(point, dict)
+            else "undefined"
+        )
+        return _unavailable_bootstrap_result(
+            reason,
+            n_requested=n_bootstrap,
+            n_valid=n_valid,
+            confidence_level=confidence_level,
+            estimate=None,
+            warnings_out=extra_warnings,
+        )
+    return _ok_bootstrap_result(
+        estimate=estimate,
+        ci_lower=float(ci_lower),
+        ci_upper=float(ci_upper),
+        confidence_level=confidence_level,
+        n_requested=n_bootstrap,
+        n_valid=n_valid,
+        warnings_out=extra_warnings,
+    )
+
+
+def bootstrap_output_fairness(
+    y_true,
+    y_pred,
+    sensitive_features,
+    *,
+    n_bootstrap=DEFAULT_N_BOOTSTRAP,
+    confidence_level=DEFAULT_CONFIDENCE_LEVEL,
+    random_state=DEFAULT_BOOTSTRAP_RANDOM_STATE,
+    min_valid_replicates=None,
+    positive_label=DEFAULT_POSITIVE_LABEL,
+):
+    """
+    Percentile bootstrap CIs for Demographic Parity and Equalized Odds.
+
+    Both intervals resample the same held-out ``(y_true, y_pred,
+    sensitive_features)`` tuples. The model is not retrained. Reported
+    ``estimate`` values are the ordinary Fairlearn point estimates on
+    the original held-out arrays, not bootstrap means.
+    """
+    dp = bootstrap_fairness_metric(
+        y_true,
+        y_pred,
+        sensitive_features,
+        demographic_parity_difference,
+        n_bootstrap=n_bootstrap,
+        confidence_level=confidence_level,
+        random_state=random_state,
+        min_valid_replicates=min_valid_replicates,
+        positive_label=positive_label,
+        require_eo_class_support=False,
+    )
+    eo = bootstrap_fairness_metric(
+        y_true,
+        y_pred,
+        sensitive_features,
+        equalized_odds_difference,
+        n_bootstrap=n_bootstrap,
+        confidence_level=confidence_level,
+        random_state=random_state,
+        min_valid_replicates=min_valid_replicates,
+        positive_label=positive_label,
+        require_eo_class_support=True,
+    )
+    return {
+        "Demographic Parity Difference": dp,
+        "Equalized Odds Difference": eo,
+    }
+
+
+def compute_output_fairness(
+    y_true,
+    y_pred,
+    sensitive_features,
+    positive_label=DEFAULT_POSITIVE_LABEL,
+):
+    """
+    Group-wise held-out fairness metrics for a binary classifier.
+
+    Inputs must be the same held-out ``y_test`` / ``y_pred`` /
+    ``sensitive_test`` arrays used for model evaluation. Missing
+    sensitive values are excluded before MetricFrame so group metrics
+    and group-support counts describe the same rows.
+
+    The positive class defaults to ``1``, matching Fairlearn
+    ``selection_rate`` and sklearn binary metrics. The live modeling
+    path supplies 0/1 labels at this boundary (string targets are
+    LabelEncoded earlier). Precision, recall, F1, and selection rate
+    all use this same ``positive_label``.
+    """
+    y_true, y_pred, sensitive_features, _n_missing = (
+        _prepare_held_out_fairness_arrays(y_true, y_pred, sensitive_features)
+    )
+    pos = positive_label
 
     metrics = {
         "Accuracy": accuracy_score,
-        "Precision": lambda y_true, y_pred: precision_score(
-            y_true, y_pred, zero_division=0
+        "Precision": lambda yt, yp, _pos=pos: precision_score(
+            yt, yp, zero_division=0, pos_label=_pos
         ),
-        "Recall": lambda y_true, y_pred: recall_score(
-            y_true, y_pred, zero_division=0
+        "Recall": lambda yt, yp, _pos=pos: recall_score(
+            yt, yp, zero_division=0, pos_label=_pos
         ),
-        "F1": lambda y_true, y_pred: f1_score(y_true, y_pred, zero_division=0),
-        "Selection Rate": selection_rate,
+        "F1": lambda yt, yp, _pos=pos: f1_score(
+            yt, yp, zero_division=0, pos_label=_pos
+        ),
+        "Selection Rate": lambda yt, yp, _pos=pos: selection_rate(
+            yt, yp, pos_label=_pos
+        ),
     }
 
     try:
