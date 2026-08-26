@@ -12,6 +12,7 @@ from bias_audit_tool.data.validation import SEVERITY_WARNING
 from bias_audit_tool.modeling.fairness import compute_output_fairness
 from bias_audit_tool.modeling.fairness import render_fairness_caveats
 from bias_audit_tool.modeling.target_validation import UnsupportedTargetError
+from bias_audit_tool.modeling.target_validation import validate_classification_target
 from bias_audit_tool.preprocessing.modeling_pipeline import (
     prepare_modeling_target_frame,
 )
@@ -141,7 +142,9 @@ def run_modeling_and_fairness(
 
     try:
         _, y_effective = prepare_modeling_target_frame(raw_df, df_proc, target_col)
-        _render_class_distribution(y_effective, target_col)
+        present_supported_class_distribution(
+            y_effective, target_col, renderer=_render_class_distribution
+        )
         results = run_modeling_pipeline(
             raw_df=raw_df,
             df_proc=df_proc,
@@ -229,6 +232,17 @@ def run_modeling_and_fairness(
 
         except Exception as e:
             st.warning(f"Could not compute fairness for `{group_col}`: {e}")
+
+
+def present_supported_class_distribution(y, target_name, renderer):
+    """Render class counts only after the target is a supported binary label.
+
+    Continuous, near-unique, and multiclass columns must fail validation
+    before any per-value table is shown, so identifier-like values are not
+    listed in the UI and then rejected.
+    """
+    validate_classification_target(y, target_name=target_name)
+    renderer(y, target_name)
 
 
 def _render_class_distribution(y, target_name):

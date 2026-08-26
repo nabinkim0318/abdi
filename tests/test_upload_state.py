@@ -4,8 +4,12 @@ import pandas as pd
 import pytest
 
 from bias_audit_tool.data.upload_state import apply_upload_identity
+from bias_audit_tool.data.upload_state import begin_new_upload
+from bias_audit_tool.data.upload_state import clear_dataset_if_upload_removed
 from bias_audit_tool.data.upload_state import DATASET_DERIVED_SESSION_KEYS
+from bias_audit_tool.data.upload_state import DEFAULT_UPLOADER_WIDGET_KEY
 from bias_audit_tool.data.upload_state import reset_dataset_state
+from bias_audit_tool.data.upload_state import UPLOADER_SESSION_KEY
 from bias_audit_tool.data.validation import fingerprint_upload
 
 
@@ -118,3 +122,49 @@ def test_apptest_same_filename_replacement_is_not_simulated():
     apply_upload_identity(session, filename="A.csv", fingerprint="new-digest")
     assert session["df"] is None
     assert session["preprocessing_applied"] is False
+
+
+def test_cleared_uploader_resets_dataset_derived_state():
+    session = _session_with_analysis_state()
+    cleared = clear_dataset_if_upload_removed(session, uploaded_file=None)
+    assert cleared is True
+    assert session["df"] is None
+    assert session["df_proc"] is None
+    assert session["preprocessing_applied"] is False
+    assert session["target_col"] is None
+    assert session.get("upload_fingerprint") is None
+    assert session.get("uploaded_file_name") is None
+    assert session["show_visualization"] is True
+
+
+def test_cleared_uploader_without_prior_identity_does_not_reset():
+    session = _session_with_analysis_state()
+    session.pop("upload_fingerprint")
+    df = session["df"]
+    cleared = clear_dataset_if_upload_removed(session, uploaded_file=None)
+    assert cleared is False
+    assert session["df"] is df
+    assert session["target_col"] == "y"
+
+
+def test_present_upload_does_not_clear_on_rerun():
+    session = _session_with_analysis_state()
+    cleared = clear_dataset_if_upload_removed(session, uploaded_file=object())
+    assert cleared is False
+    assert session["df"] is not None
+    assert session["upload_fingerprint"] == "aaa"
+
+
+def test_try_another_dataset_rotates_uploader_key_and_drops_identity():
+    session = _session_with_analysis_state()
+    session[UPLOADER_SESSION_KEY] = DEFAULT_UPLOADER_WIDGET_KEY
+    previous_key = session[UPLOADER_SESSION_KEY]
+    new_key = begin_new_upload(session)
+    assert new_key != previous_key
+    assert session[UPLOADER_SESSION_KEY] == new_key
+    assert session.get("upload_fingerprint") is None
+    assert session["df"] is None
+    assert session["preprocessing_applied"] is False
+    # Previous widget key is no longer the active uploader identity, so
+    # Streamlit will not immediately rebind the last uploaded bytes.
+    assert new_key != DEFAULT_UPLOADER_WIDGET_KEY
