@@ -5,6 +5,10 @@ import uuid
 import streamlit as st
 
 from bias_audit_tool.data.data_loader import load_and_preview_data
+from bias_audit_tool.modeling.target_validation import preferred_target_column
+from bias_audit_tool.preprocessing.recommend_columns import (
+    direct_columns_for_sensitive_attribute,
+)
 from bias_audit_tool.preprocessing.recommend_columns import (
     recommend_demographic_columns,
 )
@@ -218,11 +222,15 @@ def main():
                 # Modeling uses the raw uploaded columns (not df_proc) so
                 # that preprocessing can be fit on the train split only.
                 raw_cols = df.columns.tolist()
-                default_index = (
-                    raw_cols.index(st.session_state.group_col)
-                    if st.session_state.group_col in raw_cols
-                    else 0
+                default_col = preferred_target_column(
+                    df,
+                    columns=raw_cols,
+                    current_selection=st.session_state.get("target_col"),
+                    deprioritized=direct_columns_for_sensitive_attribute(
+                        st.session_state.group_col, raw_cols
+                    ),
                 )
+                default_index = raw_cols.index(default_col)
                 target_col = st.selectbox(
                     "🎯 Select target column", options=raw_cols, index=default_index
                 )

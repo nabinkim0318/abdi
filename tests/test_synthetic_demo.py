@@ -8,9 +8,13 @@ import pandas as pd
 from sklearn.metrics import roc_auc_score
 
 from bias_audit_tool.modeling.fairness import compute_output_fairness
+from bias_audit_tool.modeling.target_validation import preferred_target_column
 from bias_audit_tool.modeling.target_validation import validate_classification_target
 from bias_audit_tool.preprocessing.modeling_pipeline import run_modeling_pipeline
 from bias_audit_tool.preprocessing.preprocess import recommend_preprocessing
+from bias_audit_tool.preprocessing.recommend_columns import (
+    direct_columns_for_sensitive_attribute,
+)
 from bias_audit_tool.preprocessing.recommend_columns import (
     recommend_demographic_columns,
 )
@@ -95,6 +99,19 @@ def test_demo_target_passes_binary_validation():
     result = validate_classification_target(df["outcome"], target_name="outcome")
     assert result.kind == "binary"
     assert result.n_classes == 2
+
+
+def test_demo_initial_target_preference_is_binary_and_not_the_group_column():
+    df = _read_demo()
+    default = preferred_target_column(
+        df,
+        deprioritized=direct_columns_for_sensitive_attribute(
+            "demo_group_mapped", df.columns
+        ),
+    )
+    validate_classification_target(df[default], target_name=default)
+    assert default != "feature_a"
+    assert default != "demo_group"
 
 
 def test_demo_group_is_a_recommended_sensitive_candidate():

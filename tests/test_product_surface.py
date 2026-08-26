@@ -59,6 +59,14 @@ def test_live_app_does_not_show_unwired_encoding_checkbox():
     assert "Apply Scaling to numeric columns" not in combined
 
 
+def test_live_app_defaults_target_with_binary_preference_helper():
+    app_source = (ROOT / "app.py").read_text(encoding="utf-8")
+    assert "preferred_target_column" in app_source
+    assert "direct_columns_for_sensitive_attribute" in app_source
+    # Do not default the target to the grouping column index.
+    assert "raw_cols.index(st.session_state.group_col)" not in app_source
+
+
 def test_plot_distribution_comparison_uses_stable_group_column():
     df = pd.DataFrame({"gender": ["F"] * 40 + ["M"] * 60})
     result = compute_input_fairness(

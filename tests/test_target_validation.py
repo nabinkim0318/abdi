@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from bias_audit_tool.modeling.target_validation import preferred_target_column
 from bias_audit_tool.modeling.target_validation import UnsupportedTargetError
 from bias_audit_tool.modeling.target_validation import validate_classification_target
 
@@ -62,3 +63,45 @@ def test_binary_target_with_missing_values_is_accepted():
     result = validate_classification_target(y, target_name="outcome")
     assert result.kind == "binary"
     assert result.n_samples == 6
+
+
+def test_preferred_target_keeps_current_selection():
+    df = pd.DataFrame(
+        {
+            "score": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+            "label": [0, 1, 0, 1, 0, 1],
+        }
+    )
+    assert preferred_target_column(df, current_selection="score") == "score"
+
+
+def test_preferred_target_picks_first_binary_column_not_first_column():
+    df = pd.DataFrame(
+        {
+            "score": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+            "flag": [0, 1, 0, 1, 0, 1],
+            "other": [1, 0, 1, 0, 1, 0],
+        }
+    )
+    assert preferred_target_column(df) == "flag"
+
+
+def test_preferred_target_skips_deprioritized_binary_columns():
+    df = pd.DataFrame(
+        {
+            "score": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+            "group": ["A", "B", "A", "B", "A", "B"],
+            "label": [0, 1, 0, 1, 0, 1],
+        }
+    )
+    assert preferred_target_column(df, deprioritized=["group"]) == "label"
+
+
+def test_preferred_target_falls_back_to_first_column_when_none_are_binary():
+    df = pd.DataFrame(
+        {
+            "a": [0.1, 0.2, 0.3, 0.4],
+            "b": [1.1, 1.2, 1.3, 1.4],
+        }
+    )
+    assert preferred_target_column(df) == "a"

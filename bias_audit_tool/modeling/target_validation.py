@@ -26,6 +26,9 @@
 #     binary targets. Rejecting explicitly here is preferable to training
 #     successfully and failing later inside sklearn/Fairlearn.
 from dataclasses import dataclass
+from typing import Iterable
+from typing import Optional
+from typing import Sequence
 
 import pandas as pd
 
@@ -117,3 +120,52 @@ def validate_classification_target(
         reason="multiclass_unsupported",
         n_classes=nunique,
     )
+
+
+def is_supported_binary_target(y, target_name: str = "target") -> bool:
+    """True when ``validate_classification_target`` accepts ``y``."""
+    try:
+        validate_classification_target(y, target_name=target_name)
+        return True
+    except UnsupportedTargetError:
+        return False
+
+
+def preferred_target_column(
+    df: pd.DataFrame,
+    columns: Optional[Sequence[str]] = None,
+    current_selection: Optional[str] = None,
+    deprioritized: Optional[Iterable[str]] = None,
+) -> str:
+    """
+    Default modeling-target column for a selectbox.
+
+    Preference order:
+    1. Keep ``current_selection`` when it is still in ``columns``.
+    2. The first supported binary-classification column that is not in
+       ``deprioritized`` (callers typically pass the selected sensitive
+       attribute and its direct encodings so a grouping variable is not
+       the default label).
+    3. The first supported binary-classification column.
+    4. The first column.
+
+    Column names are not special-cased. Any binary-valid column can win.
+    """
+    cols = list(columns if columns is not None else df.columns)
+    if not cols:
+        raise ValueError("Cannot choose a target column from an empty column list.")
+    if current_selection in cols:
+        return current_selection
+
+    skipped = set(deprioritized or [])
+    binary_cols = [
+        col
+        for col in cols
+        if col in df.columns and is_supported_binary_target(df[col], target_name=col)
+    ]
+    for col in binary_cols:
+        if col not in skipped:
+            return col
+    if binary_cols:
+        return binary_cols[0]
+    return cols[0]
