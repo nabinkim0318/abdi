@@ -15,6 +15,9 @@ The bundled demo dataset is fully synthetic. See [DATA_PROVENANCE.md](DATA_PROVE
 - Optional inclusion or exclusion of the selected sensitive attribute, including its direct encodings, as a model feature
 - Held-out classification metrics, ROC AUC, a confusion matrix, an ROC curve, and permutation feature importance
 - Group-wise fairness diagnostics, including Demographic Parity Difference and Equalized Odds Difference
+- Input guardrails detect duplicate CSV headers and non-finite numeric values before modeling.
+- The binary modeling path checks minimum dataset/class support and warns on extreme class imbalance.
+- Uploaded datasets are tracked by content fingerprint so changed files with reused filenames do not reuse stale analysis state.
 - Count-plot visualizations for selected grouping columns and observed-vs-expected distribution charts
 
 ### Scope limits
@@ -25,6 +28,8 @@ The bundled demo dataset is fully synthetic. See [DATA_PROVENANCE.md](DATA_PROVE
 - Sensitive-attribute recommendations are heuristic and require human review
 - Excluding the selected attribute removes its direct encodings, but does not remove proxy variables
 - Benchmark-relative representation analysis requires a user-supplied expected distribution
+- Duplicate headers, non-finite numeric values, and below-minimum class/row support block modeling; they are not auto-repaired
+- Extreme class imbalance produces a heuristic warning only — classes are not resampled and thresholds are not changed
 
 ---
 
@@ -73,7 +78,9 @@ Do not interpret demo group differences as real-world demographic findings.
 app.py                             # Streamlit entry point
 bias_audit_tool/
 ├── data/
-│   └── data_loader.py             # CSV loading
+│   ├── data_loader.py             # CSV loading
+│   ├── upload_state.py            # Content-fingerprint session identity
+│   └── validation.py              # Header, finite-value, and support checks
 ├── modeling/
 │   ├── fairness.py                # Representation and model fairness metrics
 │   ├── model_selector.py          # Baseline classifier training and evaluation
@@ -103,6 +110,8 @@ tests/
 ├── test_recommend_columns.py
 ├── test_synthetic_demo.py
 ├── test_target_validation.py
+├── test_data_validation.py
+├── test_upload_state.py
 
 scripts/
 └── generate_demo_data.py          # Deterministic synthetic demo generator (seed 42)

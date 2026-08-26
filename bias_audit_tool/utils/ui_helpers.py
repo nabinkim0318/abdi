@@ -1,12 +1,20 @@
 import traceback
 
 import matplotlib.pyplot as plt
+import pandas as pd
 import streamlit as st
 from sklearn.metrics import roc_auc_score
 
+from bias_audit_tool.data.validation import DataValidationError
+from bias_audit_tool.data.validation import describe_class_distribution
+from bias_audit_tool.data.validation import SEVERITY_ERROR
+from bias_audit_tool.data.validation import SEVERITY_WARNING
 from bias_audit_tool.modeling.fairness import compute_output_fairness
 from bias_audit_tool.modeling.fairness import render_fairness_caveats
 from bias_audit_tool.modeling.target_validation import UnsupportedTargetError
+from bias_audit_tool.preprocessing.modeling_pipeline import (
+    prepare_modeling_target_frame,
+)
 from bias_audit_tool.preprocessing.modeling_pipeline import run_modeling_pipeline
 from bias_audit_tool.preprocessing.preprocess import recommend_preprocessing
 from bias_audit_tool.preprocessing.summary import summarize_categories
@@ -132,6 +140,8 @@ def run_modeling_and_fairness(
     st.markdown("## 🧠 Model Evaluation")
 
     try:
+        _, y_effective = prepare_modeling_target_frame(raw_df, df_proc, target_col)
+        _render_class_distribution(y_effective, target_col)
         results = run_modeling_pipeline(
             raw_df=raw_df,
             df_proc=df_proc,
@@ -143,10 +153,20 @@ def run_modeling_and_fairness(
     except UnsupportedTargetError as e:
         st.error(f"❌ {e}")
         return
+    except DataValidationError as e:
+        for issue in e.issues:
+            if issue.severity == SEVERITY_ERROR:
+                st.error(issue.message)
+            elif issue.severity == SEVERITY_WARNING:
+                st.warning(issue.message)
+        return
     except Exception:
         st.error("❌ Modeling failed.")
         st.text(traceback.format_exc())
         return
+
+    for issue in results.modeling_warnings:
+        st.warning(issue.message)
 
     st.markdown("### 🔍 Classification Report")
     st.dataframe(results.report)
@@ -209,3 +229,23 @@ def run_modeling_and_fairness(
 
         except Exception as e:
             st.warning(f"Could not compute fairness for `{group_col}`: {e}")
+
+
+def _render_class_distribution(y, target_name):
+    """Show effective target counts using original labels."""
+    distribution = describe_class_distribution(y)
+    n = distribution["n_effective_rows"]
+    st.caption(
+        f"Effective modeling rows for `{target_name}` (target non-null): **{n}**."
+    )
+    rows = []
+    for item in distribution["classes"]:
+        rows.append(
+            {
+                "class": item["label"],
+                "count": item["count"],
+                "percentage": f"{item['percentage']:.1%}",
+            }
+        )
+    if rows:
+        st.dataframe(pd.DataFrame(rows), use_container_width=True)
