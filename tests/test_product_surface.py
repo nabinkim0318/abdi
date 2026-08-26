@@ -46,6 +46,11 @@ def test_readme_does_not_advertise_removed_product_claims():
     assert "does not remove proxy variables" in readme
     assert "synthetic" in readme
     assert "clinical_dataset_breast_cancer" not in readme
+    assert "duplicate csv headers" in readme
+    assert "content fingerprint" in readme
+    assert "class imbalance" in readme
+    assert "data quality is guaranteed" not in readme
+    assert "statistical validity is guaranteed" not in readme
 
 
 def test_live_app_does_not_show_unwired_encoding_checkbox():
@@ -65,6 +70,10 @@ def test_live_app_defaults_target_with_binary_preference_helper():
     assert "direct_columns_for_sensitive_attribute" in app_source
     # Do not default the target to the grouping column index.
     assert "raw_cols.index(st.session_state.group_col)" not in app_source
+    assert "fingerprint_upload" in app_source
+    assert "apply_upload_identity" in app_source
+    assert "reset_dataset_state" in app_source
+    assert "uploaded_file.name !=" not in app_source
 
 
 def test_plot_distribution_comparison_uses_stable_group_column():

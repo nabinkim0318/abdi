@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import json
 import math
 from io import StringIO
@@ -99,6 +100,31 @@ def test_demo_target_passes_binary_validation():
     result = validate_classification_target(df["outcome"], target_name="outcome")
     assert result.kind == "binary"
     assert result.n_classes == 2
+
+
+def test_demo_passes_input_guardrails():
+    from bias_audit_tool.data.validation import assess_csv_headers
+    from bias_audit_tool.data.validation import CODE_EXTREME_CLASS_IMBALANCE
+    from bias_audit_tool.data.validation import collect_modeling_guardrails
+    from bias_audit_tool.data.validation import inspect_csv_header
+    from bias_audit_tool.data.validation import validate_finite_values
+
+    raw = DEMO_CSV.read_bytes()
+    header = inspect_csv_header(io.BytesIO(raw))
+    assert assess_csv_headers(header) == []
+    df = _read_demo()
+    assert validate_finite_values(df) is None
+    issues = collect_modeling_guardrails(df["outcome"], target_name="outcome")
+    codes = [issue.code for issue in issues]
+    assert "duplicate_headers" not in codes
+    assert "dataset_too_small" not in codes
+    assert "insufficient_class_support" not in codes
+    counts = df["outcome"].value_counts()
+    minority_fraction = counts.min() / counts.sum()
+    if minority_fraction <= 0.10:
+        assert CODE_EXTREME_CLASS_IMBALANCE in codes
+    else:
+        assert CODE_EXTREME_CLASS_IMBALANCE not in codes
 
 
 def test_demo_initial_target_preference_is_binary_and_not_the_group_column():

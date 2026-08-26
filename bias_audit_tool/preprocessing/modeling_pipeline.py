@@ -40,6 +40,10 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.preprocessing import OrdinalEncoder
 
+from bias_audit_tool.data.validation import blocking_issues
+from bias_audit_tool.data.validation import collect_modeling_guardrails
+from bias_audit_tool.data.validation import DataValidationError
+from bias_audit_tool.data.validation import describe_class_distribution
 from bias_audit_tool.modeling.model_selector import fit_and_evaluate_model
 from bias_audit_tool.modeling.target_validation import validate_classification_target
 from bias_audit_tool.preprocessing.preprocess import recommend_preprocessing
@@ -231,6 +235,42 @@ class ModelingPipelineResult:
     X_train: pd.DataFrame
     X_test: pd.DataFrame
     fitted_preprocessor: ColumnTransformer
+    modeling_warnings: list
+    class_distribution: dict
+
+
+def prepare_modeling_target_frame(raw_df, df_proc, target_col):
+    """Rows eligible for modeling: aligned index, target non-null."""
+    if target_col not in raw_df.columns:
+        raise ValueError(
+            f"Target column '{target_col}' was not found in the uploaded dataset."
+        )
+
+    aligned_index = (
+        df_proc.index.intersection(raw_df.index)
+        if df_proc is not None
+        else raw_df.index
+    )
+    working_df = raw_df.loc[aligned_index]
+    y = working_df[target_col]
+    non_null_mask = y.notna()
+    working_df = working_df.loc[non_null_mask]
+    y = y.loc[non_null_mask]
+    return working_df, y
+
+
+def apply_modeling_input_guardrails(y, target_name: str) -> list:
+    """Binary-target shape plus size/class-support guardrails.
+
+    Raises ``DataValidationError`` (or ``UnsupportedTargetError``) before
+    ``train_test_split`` so sklearn is not the first reporter of fragile
+    class counts.
+    """
+    validate_classification_target(y, target_name=target_name)
+    issues = collect_modeling_guardrails(y, target_name=target_name)
+    if blocking_issues(issues):
+        raise DataValidationError(issues)
+    return issues
 
 
 def run_modeling_pipeline(
@@ -254,24 +294,9 @@ def run_modeling_pipeline(
     scaling, nor encoding used to build the model's feature matrix comes
     from `df_proc` — those are fit fresh on the training split only.
     """
-    if target_col not in raw_df.columns:
-        raise ValueError(
-            f"Target column '{target_col}' was not found in the uploaded dataset."
-        )
-
-    aligned_index = (
-        df_proc.index.intersection(raw_df.index)
-        if df_proc is not None
-        else raw_df.index
-    )
-    working_df = raw_df.loc[aligned_index]
-
-    y = working_df[target_col]
-    non_null_mask = y.notna()
-    working_df = working_df.loc[non_null_mask]
-    y = y.loc[non_null_mask]
-
-    validate_classification_target(y, target_name=target_col)
+    working_df, y = prepare_modeling_target_frame(raw_df, df_proc, target_col)
+    modeling_issues = apply_modeling_input_guardrails(y, target_name=target_col)
+    class_distribution = describe_class_distribution(y)
 
     X_raw = working_df.drop(columns=[target_col])
 
@@ -335,4 +360,6 @@ def run_modeling_pipeline(
         X_train=X_train,
         X_test=X_test,
         fitted_preprocessor=preprocessor,
+        modeling_warnings=modeling_issues,
+        class_distribution=class_distribution,
     )

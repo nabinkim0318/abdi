@@ -5,6 +5,13 @@ import uuid
 import streamlit as st
 
 from bias_audit_tool.data.data_loader import load_and_preview_data
+from bias_audit_tool.data.upload_state import apply_upload_identity
+from bias_audit_tool.data.upload_state import reset_dataset_state
+from bias_audit_tool.data.validation import blocking_issues
+from bias_audit_tool.data.validation import CODE_NON_FINITE_VALUES
+from bias_audit_tool.data.validation import fingerprint_upload
+from bias_audit_tool.data.validation import SEVERITY_ERROR
+from bias_audit_tool.data.validation import SEVERITY_WARNING
 from bias_audit_tool.modeling.target_validation import preferred_target_column
 from bias_audit_tool.preprocessing.recommend_columns import (
     direct_columns_for_sensitive_attribute,
@@ -38,6 +45,14 @@ st.caption(
 )
 
 
+def _render_validation_issues(issues):
+    for issue in issues:
+        if issue.severity == SEVERITY_ERROR:
+            st.error(issue.message)
+        elif issue.severity == SEVERITY_WARNING:
+            st.warning(issue.message)
+
+
 def main():
 
     enable_modeling = st.sidebar.radio("🤖 Run ML Model?", ["No", "Yes"])
@@ -61,33 +76,56 @@ def main():
     if "audit_run_id" not in st.session_state:
         st.session_state.audit_run_id = uuid.uuid4()
 
+    infinity_blocked = False
     if uploaded_file is not None:
-        if st.session_state.df is None or uploaded_file.name != getattr(
-            st.session_state, "uploaded_file_name", None
-        ):
-            df = load_and_preview_data(uploaded_file)
-            if df is None:
+        fingerprint = fingerprint_upload(uploaded_file)
+        dataset_changed = apply_upload_identity(
+            st.session_state,
+            filename=uploaded_file.name,
+            fingerprint=fingerprint,
+        )
+        if st.session_state.df is None or dataset_changed:
+            df, issues = load_and_preview_data(uploaded_file)
+            header_blockers = [
+                issue
+                for issue in blocking_issues(issues)
+                if issue.code != CODE_NON_FINITE_VALUES
+            ]
+            if df is None or header_blockers:
+                _render_validation_issues(header_blockers or issues)
                 st.stop()
 
             st.session_state.df = df
-            st.session_state.df_proc = None
+            st.session_state.structural_issues = issues
             st.session_state.recommendations = display_preprocessing_recommendations(
                 df
             )
-            st.session_state.preprocessing_applied = False
-            st.session_state.step3_ready = False
-            st.session_state.uploaded_file_name = uploaded_file.name
             st.success("✅ File successfully loaded!")
+
+        issues = st.session_state.get("structural_issues") or []
+        _render_validation_issues(issues)
+        infinity_blocked = any(
+            issue.code == CODE_NON_FINITE_VALUES for issue in issues
+        )
 
     # 👉 Step 1: Recommendations (only once)
     if st.session_state.df is not None:
         df = st.session_state.df
         recommendations = st.session_state.recommendations
+        issues = st.session_state.get("structural_issues") or []
+        infinity_blocked = any(
+            issue.code == CODE_NON_FINITE_VALUES for issue in issues
+        )
         show_logs = st.checkbox("🪵 Show detailed preprocessing logs", value=False)
 
-        # Apply once on click. Re-running exploratory preprocessing on every
-        # rerun would overwrite merged grouping columns such as race_mapped.
-        if st.button(
+        # Infinities are allowed to load for explanation, but scalers/log
+        # transforms cannot run on non-finite values.
+        if infinity_blocked:
+            st.info(
+                "Preprocessing and modeling are blocked until infinity "
+                "values are replaced in the source file."
+            )
+        elif st.button(
             "🚀 Apply Recommended Preprocessing", key="preprocessing_button"
         ):
             df_proc = apply_preprocessing_and_display(df, recommendations, show_logs)
@@ -219,68 +257,69 @@ def main():
 
             # Step 3c: Modeling
             if enable_modeling == "Yes" and "group_col" in st.session_state:
-                # Modeling uses the raw uploaded columns (not df_proc) so
-                # that preprocessing can be fit on the train split only.
-                raw_cols = df.columns.tolist()
-                default_col = preferred_target_column(
-                    df,
-                    columns=raw_cols,
-                    current_selection=st.session_state.get("target_col"),
-                    deprioritized=direct_columns_for_sensitive_attribute(
-                        st.session_state.group_col, raw_cols
-                    ),
-                )
-                default_index = raw_cols.index(default_col)
-                target_col = st.selectbox(
-                    "🎯 Select target column", options=raw_cols, index=default_index
-                )
-                st.session_state.target_col = target_col
-
-                include_sensitive_as_feature = st.checkbox(
-                    "Include selected sensitive attribute as a model feature?",
-                    value=False,
-                    help=(
-                        "By default, the selected sensitive attribute and its "
-                        "direct encodings (for example one-hot race_* columns) "
-                        "are excluded from the model's predictive features. "
-                        "Unrelated correlated variables (proxies) are not "
-                        "removed automatically. Including the attribute is "
-                        "not a fairness guarantee."
-                    ),
-                )
-
-                if target_col:
-                    run_modeling_and_fairness(
-                        raw_df=df,
-                        df_proc=df_proc,
-                        target_col=target_col,
-                        group_col=st.session_state.group_col,
-                        include_sensitive_as_feature=include_sensitive_as_feature,
-                        recommendations=recommendations,
+                if infinity_blocked:
+                    st.error(
+                        "Modeling is blocked because numeric infinity values "
+                        "are present. Replace them before running the model."
                     )
+                else:
+                    # Modeling uses the raw uploaded columns (not df_proc) so
+                    # that preprocessing can be fit on the train split only.
+                    raw_cols = df.columns.tolist()
+                    default_col = preferred_target_column(
+                        df,
+                        columns=raw_cols,
+                        current_selection=st.session_state.get("target_col"),
+                        deprioritized=direct_columns_for_sensitive_attribute(
+                            st.session_state.group_col, raw_cols
+                        ),
+                    )
+                    default_index = raw_cols.index(default_col)
+                    target_col = st.selectbox(
+                        "🎯 Select target column",
+                        options=raw_cols,
+                        index=default_index,
+                    )
+                    st.session_state.target_col = target_col
+
+                    include_sensitive_as_feature = st.checkbox(
+                        "Include selected sensitive attribute as a model feature?",
+                        value=False,
+                        help=(
+                            "By default, the selected sensitive attribute and "
+                            "its direct encodings (for example one-hot "
+                            "race_* columns) are excluded from the model's "
+                            "predictive features. Unrelated correlated "
+                            "variables (proxies) are not removed "
+                            "automatically. Including the attribute is "
+                            "not a fairness guarantee."
+                        ),
+                    )
+
+                    if target_col:
+                        run_modeling_and_fairness(
+                            raw_df=df,
+                            df_proc=df_proc,
+                            target_col=target_col,
+                            group_col=st.session_state.group_col,
+                            include_sensitive_as_feature=include_sensitive_as_feature,
+                            recommendations=recommendations,
+                        )
 
             st.markdown("---")
 
             if st.button("🔁 Try with another dataset?"):
-                # Clear only relevant session keys
-                initialize_session()
+                reset_dataset_state(st.session_state, clear_identity=True)
+                st.rerun()
 
     else:
         st.info("⬅️ Please upload a dataset to begin.")
 
 
 def initialize_session():
-    defaults = {
-        "target_col": None,
-        "preprocessing_applied": False,
-        "step3_ready": False,
-        "df": None,
-        "df_proc": None,
-        "recommendations": None,
-    }
-    for k, v in defaults.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
+    """Ensure dataset-derived keys exist without wiping a valid rerun."""
+    if "df" not in st.session_state:
+        reset_dataset_state(st.session_state, clear_identity=False)
 
 
 if __name__ == "__main__":
