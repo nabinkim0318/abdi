@@ -92,3 +92,5 @@ def test_readme_does_not_claim_automatic_detection_or_fairness_verdicts():
     )
     assert "review before use" in readme
     assert "exploratory bias and fairness diagnostics" in lowered
+    assert "shap" not in lowered
+    assert "automated reports" not in lowered

@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 from fairlearn.metrics import demographic_parity_difference
 from fairlearn.metrics import equalized_odds_difference
+from matplotlib import pyplot as plt
 
 from bias_audit_tool.modeling import fairness as fairness_mod
 from bias_audit_tool.modeling.fairness import ALL_GROUPS_WITHIN_THRESHOLD_MESSAGE
@@ -10,10 +11,12 @@ from bias_audit_tool.modeling.fairness import CLAIM_SAFETY_CAVEAT
 from bias_audit_tool.modeling.fairness import compute_input_fairness
 from bias_audit_tool.modeling.fairness import compute_output_fairness
 from bias_audit_tool.modeling.fairness import FAIRNESS_METRIC_CAVEAT
+from bias_audit_tool.modeling.fairness import GROUP_COL
 from bias_audit_tool.modeling.fairness import NO_BENCHMARK_AVAILABLE
 from bias_audit_tool.modeling.fairness import NO_BENCHMARK_SELECTED_MESSAGE
 from bias_audit_tool.modeling.fairness import OUTSIDE_THRESHOLD
 from bias_audit_tool.modeling.fairness import parse_user_benchmark
+from bias_audit_tool.modeling.fairness import plot_input_fairness
 from bias_audit_tool.modeling.fairness import THRESHOLD_STATUS_COL
 from bias_audit_tool.modeling.fairness import WITHIN_THRESHOLD
 
@@ -99,11 +102,13 @@ def test_output_fairness_zero_positive_labels_in_group_does_not_crash():
 
     # The Recall ratio is undefined (min group value is 0) and must be surfaced
     # explicitly rather than as a bare inf or a crash.
-    recall_ratio = summary["Coverage of Actual Positives"]
+    recall_ratio = summary["Recall Ratio"]
     assert isinstance(recall_ratio, dict)
     assert recall_ratio["status"] == "undefined"
     assert recall_ratio["min_value"] == 0.0
     assert recall_ratio["max_value"] == 1.0
+    assert "Recall Difference" in summary
+    assert summary["Recall Difference"] == pytest.approx(1.0)
 
     # DP/EO themselves must still compute as real numbers.
     assert isinstance(summary["Demographic Parity Difference"], float)
@@ -117,17 +122,56 @@ def test_output_fairness_zero_denominator_ratio_is_explicit_not_inf():
 
     _, summary = compute_output_fairness(y_true, y_pred, sensitive)
 
-    selection_ratio = summary["Group Selection Rate"]
+    selection_ratio = summary["Selection Rate Ratio"]
     assert isinstance(selection_ratio, dict)
     assert selection_ratio["status"] == "undefined"
     assert "zero" in selection_ratio["reason"].lower()
     assert selection_ratio["min_value"] == 0.0
     assert selection_ratio["max_value"] == 1.0
+    assert "Selection Rate Difference" in summary
+    assert summary["Selection Rate Difference"] == pytest.approx(1.0)
 
     # No entry anywhere in the summary should be a bare, unexplained inf.
     for value in summary.values():
         if isinstance(value, float):
             assert not np.isinf(value)
+
+
+def test_output_fairness_difference_and_ratio_keys_do_not_collide():
+    sensitive = np.array(["A"] * 4 + ["B"] * 4)
+    y_true = np.array([1, 1, 0, 0, 1, 1, 0, 0])
+    y_pred = np.array([1, 1, 1, 0, 1, 0, 0, 0])
+
+    _, summary = compute_output_fairness(y_true, y_pred, sensitive)
+
+    metric_bases = ["Accuracy", "Precision", "Recall", "F1", "Selection Rate"]
+    for base in metric_bases:
+        diff_key = f"{base} Difference"
+        ratio_key = f"{base} Ratio"
+        assert diff_key in summary
+        assert ratio_key in summary
+        assert diff_key != ratio_key
+
+    assert len(summary) == len(set(summary))
+    assert "Demographic Parity Difference" in summary
+    assert "Equalized Odds Difference" in summary
+    assert "Demographic Parity Difference" not in {
+        f"{base} Difference" for base in metric_bases
+    }
+
+
+def test_output_fairness_undefined_ratio_survives_display_normalization():
+    sensitive = np.array(["A", "A", "B", "B"])
+    y_true = np.array([1, 1, 1, 1])
+    y_pred = np.array([0, 0, 1, 1])
+
+    _, summary = compute_output_fairness(y_true, y_pred, sensitive)
+
+    assert "Selection Rate Difference" in summary
+    assert "Selection Rate Ratio" in summary
+    assert summary["Selection Rate Difference"] == pytest.approx(1.0)
+    assert summary["Selection Rate Ratio"]["status"] == "undefined"
+    assert not any(isinstance(v, float) and np.isinf(v) for v in summary.values())
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +290,36 @@ def test_parse_user_benchmark_does_not_invent_a_distribution():
     parsed, status = parse_user_benchmark('{"A": 0.5, "B": 0.5}')
     assert status == "ok"
     assert parsed == {"A": 0.5, "B": 0.5}
+
+
+def test_input_fairness_uses_stable_group_column_for_race():
+    df = pd.DataFrame({"race": ["Black"] * 30 + ["White"] * 70})
+    benchmark = {"Black": 0.3, "White": 0.7}
+
+    result = compute_input_fairness(
+        df, demographic_col="race", benchmark_distribution=benchmark
+    )
+
+    assert GROUP_COL in result.columns
+    assert list(result.columns[:1]) == [GROUP_COL]
+    assert set(result[GROUP_COL]) == {"Black", "White"}
+    by_group = result.set_index(GROUP_COL)
+    assert by_group.loc["Black", "Disparity_Ratio"] == pytest.approx(1.0)
+
+
+def test_plot_input_fairness_consumes_race_named_demographic_column():
+    df = pd.DataFrame({"race": ["Black"] * 30 + ["White"] * 70})
+    benchmark = {"Black": 0.3, "White": 0.7}
+    result = compute_input_fairness(
+        df, demographic_col="race", benchmark_distribution=benchmark
+    )
+
+    fig = plot_input_fairness(result)
+    assert fig is not None
+    ax = fig.axes[0]
+    ytick_labels = [tick.get_text() for tick in ax.get_yticklabels()]
+    assert set(ytick_labels) == {"Black", "White"}
+    plt.close(fig)
 
 
 def test_public_fairness_wording_is_criterion_based_not_a_verdict():

@@ -1,5 +1,4 @@
 # utils/fairness.py
-import itertools
 import json
 import warnings
 
@@ -19,13 +18,9 @@ from sklearn.metrics import f1_score
 from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 
-PLAIN_METRIC_NAMES = {
-    "Accuracy": "Overall Correctness",
-    "Precision": "Correctness of Positive Predictions",
-    "Recall": "Coverage of Actual Positives",
-    "F1": "Balance between Precision & Recall",
-    "Selection Rate": "Group Selection Rate",
-}
+# Stable group-column name returned by compute_input_fairness, regardless
+# of the original demographic column name.
+GROUP_COL = "Group"
 
 # Criterion-based labels for representation ratios vs a user-supplied
 # benchmark. These are not fairness verdicts.
@@ -153,74 +148,6 @@ def validate_inputs(df, demographic_col, benchmark_distribution):
         )
 
 
-def compute_standardized_difference(df, group_col, value_col):
-    """
-    Compute standardized differences between all group pairs for a
-    continuous variable.
-
-    Cohen's d interpretation:
-    - Small effect: 0.2
-    - Medium effect: 0.5
-    - Large effect: 0.8+
-    """
-    validate_inputs(df, group_col, {})  # Basic validation
-
-    groups = df[group_col].dropna().unique()
-    if len(groups) < 2:
-        raise ValueError("Need at least 2 groups for comparison")
-
-    results = []
-
-    for g1, g2 in itertools.combinations(groups, 2):
-        x1 = df[df[group_col] == g1][value_col].dropna()
-        x2 = df[df[group_col] == g2][value_col].dropna()
-
-        if len(x1) == 0 or len(x2) == 0:
-            continue
-
-        mean1, mean2 = x1.mean(), x2.mean()
-        std1, std2 = x1.std(), x2.std()
-
-        # Use Cohen's d formula (pooled standard deviation)
-        pooled_std = np.sqrt(
-            ((len(x1) - 1) * std1**2 + (len(x2) - 1) * std2**2)
-            / (len(x1) + len(x2) - 2)
-        )
-        std_diff = (mean1 - mean2) / pooled_std if pooled_std > 0 else np.nan
-
-        results.append(
-            {
-                "Group_1": g1,
-                "Group_2": g2,
-                "Standardized_Diff": std_diff,
-                "Effect_Size": _interpret_effect_size(abs(std_diff)),
-                "Mean_1": mean1,
-                "Mean_2": mean2,
-                "N_1": len(x1),
-                "N_2": len(x2),
-                "Pooled_SD": pooled_std,
-            }
-        )
-
-    return pd.DataFrame(results).sort_values(
-        "Standardized_Diff", key=abs, ascending=False
-    )
-
-
-def _interpret_effect_size(cohen_d):
-    """Interpret Cohen's d effect size."""
-    if pd.isna(cohen_d):
-        return "Unknown"
-    elif cohen_d < 0.2:
-        return "Negligible"
-    elif cohen_d < 0.5:
-        return "Small"
-    elif cohen_d < 0.8:
-        return "Medium"
-    else:
-        return "Large"
-
-
 def _threshold_status(ratio, threshold_low, threshold_high):
     """Map a disparity ratio to a criterion label, not a fairness verdict."""
     if pd.isna(ratio):
@@ -275,8 +202,9 @@ def compute_input_fairness(
     not computed.
 
     Returns:
-        DataFrame with observed shares and, when a benchmark is supplied,
-        disparity ratios plus a `Within Threshold?` criterion column.
+        DataFrame with a `Group` column (independent of `demographic_col`),
+        observed shares, and, when a benchmark is supplied, disparity
+        ratios plus a `Within Threshold?` criterion column.
     """
     validate_inputs(df, demographic_col, benchmark_distribution)
 
@@ -303,9 +231,7 @@ def compute_input_fairness(
         result_df.attrs["KL_Divergence"] = "N/A"
         result_df.attrs["Wasserstein_Distance"] = "N/A"
         result_df.attrs["Total_Variation"] = "N/A"
-        result_df = result_df.sort_values(sort_by, ascending=False).reset_index()
-        result_df = result_df.rename(columns={"index": "Group"})
-        return result_df
+        return _with_group_column(result_df, sort_by)
 
     result_df.attrs["benchmark_status"] = "ok"
     result_df.attrs["benchmark_message"] = None
@@ -314,10 +240,11 @@ def compute_input_fairness(
     result_df["Expected_%"] = result_df.index.map(benchmark_distribution)
     missing_groups = result_df["Expected_%"].isnull().sum()
     if missing_groups > 0:
-        print(
-            f"Warning: {missing_groups} group(s) missing from benchmark. "
+        warnings.warn(
+            f"{missing_groups} group(s) missing from benchmark. "
             "These groups will be reported as 'No benchmark available' "
-            "instead of being assigned a fabricated expected value."
+            "instead of being assigned a fabricated expected value.",
+            stacklevel=2,
         )
 
     # Groups without a benchmark yield NaN (Observed_% / NaN).
@@ -362,85 +289,89 @@ def compute_input_fairness(
         result_df.attrs["Wasserstein_Distance"] = "N/A"
         result_df.attrs["Total_Variation"] = "N/A"
 
-    result_df = result_df.sort_values(sort_by, ascending=False).reset_index()
-    result_df = result_df.rename(columns={"index": "Group"})
+    return _with_group_column(result_df, sort_by)
 
-    return result_df
+
+def _with_group_column(result_df: pd.DataFrame, sort_by: str) -> pd.DataFrame:
+    """Reset the group index to a stable `Group` column name."""
+    result_df = result_df.sort_values(sort_by, ascending=False)
+    result_df.index.name = GROUP_COL
+    return result_df.reset_index()
 
 
 def plot_input_fairness(fairness_result, top_n=20, figsize=(12, 8)):
     """Enhanced plotting with better styling and annotations."""
     if fairness_result is None or fairness_result.empty:
-        print("No data to plot")
+        return None
+    if GROUP_COL not in fairness_result.columns:
         return None
 
-    try:
-        plot_df = fairness_result.sort_values(
-            "Disparity_Ratio", ascending=False
-        ).head(top_n)
+    plot_df = fairness_result.sort_values("Disparity_Ratio", ascending=False).head(
+        top_n
+    )
 
-        colors = plot_df[THRESHOLD_STATUS_COL].map(
-            {WITHIN_THRESHOLD: "#2E8B57", OUTSIDE_THRESHOLD: "#DC143C"}
-        )
+    colors = plot_df[THRESHOLD_STATUS_COL].map(
+        {
+            WITHIN_THRESHOLD: "#2E8B57",
+            OUTSIDE_THRESHOLD: "#DC143C",
+            NO_BENCHMARK_AVAILABLE: "#808080",
+        }
+    )
 
-        fig, ax = plt.subplots(figsize=figsize)
-        sns.barplot(
-            data=plot_df,
-            y="Group",
-            x="Disparity_Ratio",
-            palette=colors,
-            ax=ax,
-        )
+    fig, ax = plt.subplots(figsize=figsize)
+    sns.barplot(
+        data=plot_df,
+        y=GROUP_COL,
+        x="Disparity_Ratio",
+        hue=GROUP_COL,
+        palette=list(colors),
+        legend=False,
+        ax=ax,
+    )
 
-        # Add reference lines
-        ax.axvline(
-            1.0,
-            color="black",
-            linestyle="--",
-            linewidth=2,
-            label="Perfect Parity (1.0)",
-        )
-        ax.axvline(
-            0.8, color="orange", linestyle=":", alpha=0.7, label="Lower Bound (0.8)"
-        )
-        ax.axvline(
-            1.25,
-            color="orange",
-            linestyle=":",
-            alpha=0.7,
-            label="Upper Bound (1.25)",
-        )
+    ax.axvline(
+        1.0,
+        color="black",
+        linestyle="--",
+        linewidth=2,
+        label="Perfect Parity (1.0)",
+    )
+    ax.axvline(
+        0.8, color="orange", linestyle=":", alpha=0.7, label="Lower Bound (0.8)"
+    )
+    ax.axvline(
+        1.25,
+        color="orange",
+        linestyle=":",
+        alpha=0.7,
+        label="Upper Bound (1.25)",
+    )
 
-        # Annotations for extreme values
-        for i, (_, row) in enumerate(plot_df.iterrows()):
-            if row["Disparity_Ratio"] > 2.0 or row["Disparity_Ratio"] < 0.5:
-                ax.annotate(
-                    f'{row["Disparity_Ratio"]:.2f}',
-                    xy=(row["Disparity_Ratio"], i),
-                    xytext=(5, 0),
-                    textcoords="offset points",
-                    va="center",
-                    fontsize=9,
-                    weight="bold",
-                )
+    for i, (_, row) in enumerate(plot_df.iterrows()):
+        if row["Disparity_Ratio"] > 2.0 or row["Disparity_Ratio"] < 0.5:
+            ax.annotate(
+                f'{row["Disparity_Ratio"]:.2f}',
+                xy=(row["Disparity_Ratio"], i),
+                xytext=(5, 0),
+                textcoords="offset points",
+                va="center",
+                fontsize=9,
+                weight="bold",
+            )
 
-        ax.set_title(
-            "📊 Fairness Audit: Disparity Ratios by Demographic Group",
-            fontsize=14,
-            weight="bold",
-            pad=20,
-        )
-        ax.set_xlabel("Disparity Ratio (Observed ÷ Expected)", fontsize=12)
-        ax.set_ylabel("Demographic Group", fontsize=12)
-        ax.legend(loc="best")
-        ax.grid(axis="x", alpha=0.3)
+    ax.set_title(
+        "📊 Fairness Audit: Disparity Ratios by Demographic Group",
+        fontsize=14,
+        weight="bold",
+        pad=20,
+    )
+    ax.set_xlabel("Disparity Ratio (Observed ÷ Expected)", fontsize=12)
+    ax.set_ylabel("Demographic Group", fontsize=12)
+    ax.legend(loc="best")
+    ax.grid(axis="x", alpha=0.3)
 
-        plt.tight_layout()
-        return fig
-
-    except Exception as e:
-        print(f"[ERROR] plot_input_fairness failed: {e}")
-        return None
+    plt.tight_layout()
+    return fig
 
 
 def render_fairness_caveats():
@@ -619,12 +550,10 @@ def compute_output_fairness(y_true, y_pred, sensitive_features):
         )
         disparity_summary["Equalized Odds Difference"] = _undefined_metric(str(e))
 
-    # Convert to plain language and sort by severity
+    # Keep difference and ratio as distinct keys. Mapping both through a
+    # shared display name would silently overwrite one of the values.
     disparity_plain = {
-        PLAIN_METRIC_NAMES.get(
-            k.replace(" disparity", "").replace(" ratio", ""), k
-        ): v
-        for k, v in disparity_summary.items()
+        _output_fairness_display_key(k): v for k, v in disparity_summary.items()
     }
 
     # Sort by magnitude (excluding error strings)
@@ -639,65 +568,10 @@ def compute_output_fairness(y_true, y_pred, sensitive_features):
     return metric_frame, disparity_sorted
 
 
-# Convenience function for complete fairness audit
-def run_complete_fairness_audit(
-    df,
-    demographic_col,
-    y_true=None,
-    y_pred=None,
-    benchmark_dist=None,
-    show_plots=True,
-):
-    """
-    Run a complete fairness audit including both input and output fairness.
-
-    Returns:
-    - dict with input_fairness, output_fairness (if provided), and summary
-    """
-    results = {}
-
-    # Input fairness
-    print("🔍 Running input fairness analysis...")
-    input_fairness = compute_input_fairness(df, demographic_col, benchmark_dist)
-    results["input_fairness"] = input_fairness
-
-    if show_plots:
-        fig = plot_input_fairness(input_fairness)
-        if fig:
-            results["input_plot"] = fig
-
-    # Output fairness (if predictions provided)
-    if y_true is not None and y_pred is not None:
-        print("🎯 Running output fairness analysis...")
-        sensitive_features = df[demographic_col].values
-        metric_frame, disparities = compute_output_fairness(
-            y_true, y_pred, sensitive_features
-        )
-        results["output_fairness"] = {
-            "metrics": metric_frame,
-            "disparities": disparities,
-        }
-
-    outside_threshold_groups = (
-        input_fairness[THRESHOLD_STATUS_COL] == OUTSIDE_THRESHOLD
-    ).sum()
-    total_groups = len(input_fairness)
-
-    results["summary"] = {
-        "total_groups": total_groups,
-        "outside_threshold_groups": outside_threshold_groups,
-        "within_threshold_rate": (
-            (total_groups - outside_threshold_groups) / total_groups
-            if total_groups
-            else None
-        ),
-        "kl_divergence": input_fairness.attrs.get("KL_Divergence"),
-        "wasserstein_distance": input_fairness.attrs.get("Wasserstein_Distance"),
-        "benchmark_status": input_fairness.attrs.get("benchmark_status"),
-    }
-
-    print(
-        f"Audit complete. {outside_threshold_groups}/{total_groups} groups "
-        "outside the selected disparity-ratio threshold."
-    )
-    return results
+def _output_fairness_display_key(internal_key: str) -> str:
+    """Map internal disparity/ratio keys to unique display names."""
+    if internal_key.endswith(" disparity"):
+        return f"{internal_key[: -len(' disparity')]} Difference"
+    if internal_key.endswith(" ratio"):
+        return f"{internal_key[: -len(' ratio')]} Ratio"
+    return internal_key

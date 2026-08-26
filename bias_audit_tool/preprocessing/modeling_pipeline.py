@@ -314,9 +314,7 @@ def run_modeling_pipeline(
     X_train = preprocessor.transform(X_train_raw)
     X_test = preprocessor.transform(X_test_raw)
 
-    results = fit_and_evaluate_model(
-        X_train, y_train, X_test, y_test, show_plots=False
-    )
+    results = fit_and_evaluate_model(X_train, y_train, X_test, y_test)
 
     return ModelingPipelineResult(
         model=results["model"],

@@ -3,28 +3,6 @@ from typing import Dict
 import pandas as pd
 
 
-def basic_df_summary(df: pd.DataFrame) -> None:
-    """
-    Print basic summary statistics of a DataFrame.
-
-    Args:
-        df (pd.DataFrame): The input DataFrame to be summarized.
-
-    Displays:
-        - DataFrame info (column types, non-null counts)
-        - Descriptive statistics for all columns
-        - Top 30 columns with the highest missing value ratios
-    """
-    print("🔎 df.info():")
-    print(df.info())
-
-    print("\n📊 df.describe(include='all'):")
-    print(df.describe(include="all"))
-
-    print("\n🔥 Top 30 columns with highest missing rate:")
-    print(df.isnull().mean().sort_values(ascending=False).head(30))
-
-
 def summarize_categories(
     df: pd.DataFrame, recommendations: Dict[str, str]
 ) -> pd.DataFrame:

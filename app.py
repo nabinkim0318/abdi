@@ -29,6 +29,10 @@ st.sidebar.title("📊 Bias Audit Assistant")
 
 # ===== Main Panel =====
 st.title("🧪 Bias Audit Dashboard")
+st.caption(
+    "Exploratory bias and fairness diagnostics for tabular datasets "
+    "using Fairlearn and scikit-learn."
+)
 
 
 def main():
@@ -95,23 +99,11 @@ def main():
 
         # 👉 Step 3: Post-Preprocessing Analysis
         if st.session_state.get("step3_ready") and "df_proc" in st.session_state:
-            print("[DEBUG] step3_ready is True")
             df_proc = st.session_state.df_proc
-            print(
-                "[DEBUG] if df_proc has gender before "
-                "recommend_demographic_columns:",
-                "gender_mapped" in df_proc.columns if df_proc is not None else False,
-            )
 
             # 🧠 Step 3a: Demographic column recommendation (only once)
             if "demo_cols" not in st.session_state and df_proc is not None:
                 df_proc, demo_cols_result = recommend_demographic_columns(df_proc)
-                print(
-                    "[DEBUG] Columns after recommend_demographic_columns:",
-                    df_proc.columns.tolist(),
-                )
-                if "demographic.race_mapped" not in df_proc.columns:
-                    print("[⚠️] demographic.race_mapped was dropped!")
 
                 demo_cols = [
                     str(col)
@@ -120,12 +112,6 @@ def main():
                 ]
                 st.session_state.demo_cols = demo_cols
                 st.session_state.df_proc = df_proc
-                if "demographic.race_mapped" not in df_proc.columns:
-                    print(
-                        f"[⚠️] demographic.race_mapped was dropped! "
-                        f"after session_status.demo_cols: "
-                        f"{st.session_state.demo_cols}"
-                    )
             else:
                 demo_cols = st.session_state.demo_cols
 
@@ -182,11 +168,6 @@ def main():
                     key="group_col_selectbox",
                 )
                 st.session_state.group_col = group_col
-                print(f"[INFO] group_col selected: {group_col}")
-                print(
-                    "[DEBUG] if df_proc has gender after group_col selected:",
-                    "gender_mapped" in df_proc.columns,
-                )
 
                 if group_col not in df_proc.columns:
                     st.error(
@@ -198,12 +179,6 @@ def main():
                     ]
                     return
 
-                if df_proc is not None:
-                    print("[DEBUG] df_proc columns:", df_proc.columns)
-                    print(
-                        "[DEBUG] if df_proc has gender:",
-                        "gender_mapped" in df_proc.columns,
-                    )
                 current_group_col = group_col
                 last_group_col = st.session_state.get("last_group_col", None)
 
@@ -300,19 +275,6 @@ def button_clicked(key):
     if st.button("🚀 Apply Recommended Preprocessing", key=key):
         st.session_state[key + "_clicked"] = True
     return st.session_state.get(key + "_clicked", False)
-
-
-def extract_valid_demo_cols(candidate_info, df_columns):
-    if (
-        isinstance(candidate_info, list)
-        and candidate_info
-        and isinstance(candidate_info[0], tuple)
-        and len(candidate_info[0]) == 3
-    ):
-        demo_cols = [col for col, _, _ in candidate_info]
-    else:
-        demo_cols = candidate_info  # fallback if already flat list
-    return [col for col in demo_cols if col in df_columns]
 
 
 if __name__ == "__main__":
