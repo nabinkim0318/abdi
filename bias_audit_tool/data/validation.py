@@ -1,16 +1,12 @@
-"""Pure input guardrails for uploaded CSVs and binary modeling support.
-
-These checks detect problems early and explain them. They do not rename
-columns, convert infinities to NaN, drop rows, resample classes, or
-otherwise repair the user's data.
-
-Thresholds are feasibility heuristics for *this app's* held-out workflow
-(``test_size=0.2``, stratified binary split). They are not a claim that
-data above the threshold is statistically valid.
-"""
-
-from __future__ import annotations
-
+# Pure input guardrails for uploaded CSVs and binary modeling support.
+#
+# These checks detect problems early and explain them. They do not rename
+# columns, convert infinities to NaN, drop rows, resample classes, or
+# otherwise repair the user's data.
+#
+# Thresholds are feasibility heuristics for *this app's* held-out workflow
+# (``test_size=0.2``, stratified binary split). They are not a claim that
+# data above the threshold is statistically valid.
 import csv
 import hashlib
 import io
@@ -85,11 +81,15 @@ class DataValidationError(ValueError):
 FileLike = Union[BinaryIO, TextIO, io.BytesIO, io.StringIO, Any]
 
 
-def blocking_issues(issues: Iterable[DataValidationIssue]) -> list[DataValidationIssue]:
+def blocking_issues(
+    issues: Iterable[DataValidationIssue],
+) -> list[DataValidationIssue]:
     return [issue for issue in issues if issue.severity == SEVERITY_ERROR]
 
 
-def warning_issues(issues: Iterable[DataValidationIssue]) -> list[DataValidationIssue]:
+def warning_issues(
+    issues: Iterable[DataValidationIssue],
+) -> list[DataValidationIssue]:
     return [issue for issue in issues if issue.severity == SEVERITY_WARNING]
 
 

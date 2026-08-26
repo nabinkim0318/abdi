@@ -1,13 +1,9 @@
-"""Dataset identity and Streamlit session reset for uploaded CSVs.
-
-Analytical session state is keyed by a SHA-256 content fingerprint, not by
-filename. Byte-identical uploads keep analysis state even if the filename
-changes; a new digest resets dataset-derived keys. The digest is stored in
-session state only — it is not logged or transmitted.
-"""
-
-from __future__ import annotations
-
+# Dataset identity and Streamlit session reset for uploaded CSVs.
+#
+# Analytical session state is keyed by a SHA-256 content fingerprint, not by
+# filename. Byte-identical uploads keep analysis state even if the filename
+# changes; a new digest resets dataset-derived keys. The digest is stored in
+# session state only — it is not logged or transmitted.
 import uuid
 from typing import MutableMapping
 from typing import Optional
