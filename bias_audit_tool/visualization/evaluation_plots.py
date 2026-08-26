@@ -1,4 +1,4 @@
-"""Held-out model-evaluation figures. Matplotlib figures are returned, not shown."""
+# Held-out model-evaluation figures. Matplotlib figures are returned, not shown.
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.figure import Figure
