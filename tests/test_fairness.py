@@ -12,6 +12,7 @@ from bias_audit_tool.modeling.fairness import compute_input_fairness
 from bias_audit_tool.modeling.fairness import compute_output_fairness
 from bias_audit_tool.modeling.fairness import FAIRNESS_METRIC_CAVEAT
 from bias_audit_tool.modeling.fairness import GROUP_COL
+from bias_audit_tool.modeling.fairness import interpret_fairness_metrics
 from bias_audit_tool.modeling.fairness import NO_BENCHMARK_AVAILABLE
 from bias_audit_tool.modeling.fairness import NO_BENCHMARK_SELECTED_MESSAGE
 from bias_audit_tool.modeling.fairness import OUTSIDE_THRESHOLD
@@ -320,6 +321,26 @@ def test_plot_input_fairness_consumes_race_named_demographic_column():
     ytick_labels = [tick.get_text() for tick in ax.get_yticklabels()]
     assert set(ytick_labels) == {"Black", "White"}
     plt.close(fig)
+
+
+def test_interpret_fairness_metrics_accepts_na_when_no_group_matched_benchmark():
+    labels = interpret_fairness_metrics("N/A", "N/A", "N/A")
+    assert labels["KL Divergence"] == "N/A"
+    assert labels["Wasserstein Distance"] == "N/A"
+    assert labels["Total Variation"] == "N/A"
+
+    df = pd.DataFrame({"race": ["Black"] * 30 + ["White"] * 70})
+    result = compute_input_fairness(
+        df,
+        demographic_col="race",
+        benchmark_distribution={"True": 0.4, "False": 0.6},
+    )
+    labels = interpret_fairness_metrics(
+        result.attrs["KL_Divergence"],
+        result.attrs["Wasserstein_Distance"],
+        result.attrs["Total_Variation"],
+    )
+    assert labels["KL Divergence"] == "N/A"
 
 
 def test_public_fairness_wording_is_criterion_based_not_a_verdict():

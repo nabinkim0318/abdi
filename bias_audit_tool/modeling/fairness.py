@@ -47,46 +47,30 @@ CLAIM_SAFETY_CAVEAT = (
 )
 
 
+def _distance_alignment_label(val, cuts, severe_label):
+    """Map a numeric distance to a caption; non-numeric values stay N/A."""
+    if not isinstance(val, (int, float)) or isinstance(val, bool) or pd.isna(val):
+        return "N/A"
+    if val < cuts[0]:
+        return "✅ Excellent alignment"
+    if val < cuts[1]:
+        return "🟢 Good alignment" if severe_label == "kl" else "🟢 Mild deviation"
+    if val < cuts[2]:
+        return "⚠️ Moderate deviation"
+    return "🚨 Severe deviation"
+
+
 def interpret_fairness_metrics(kl, wasserstein, tv):
     """
     Interpret KL Divergence, Wasserstein Distance, and Total Variation
     into severity labels for distribution-alignment diagnostics.
     """
-
-    def label_kl(val):
-        if val < 0.05:
-            return "✅ Excellent alignment"
-        elif val < 0.15:
-            return "🟢 Good alignment"
-        elif val < 0.50:
-            return "⚠️ Moderate deviation"
-        else:
-            return "🚨 Severe deviation"
-
-    def label_wass(val):
-        if val < 0.05:
-            return "✅ Excellent alignment"
-        elif val < 0.15:
-            return "🟢 Mild deviation"
-        elif val < 0.30:
-            return "⚠️ Moderate deviation"
-        else:
-            return "🚨 Severe deviation"
-
-    def label_tv(val):
-        if val < 0.10:
-            return "✅ Excellent alignment"
-        elif val < 0.25:
-            return "🟢 Mild deviation"
-        elif val < 0.40:
-            return "⚠️ Moderate deviation"
-        else:
-            return "🚨 Severe deviation"
-
     return {
-        "KL Divergence": label_kl(kl),
-        "Wasserstein Distance": label_wass(wasserstein),
-        "Total Variation": label_tv(tv),
+        "KL Divergence": _distance_alignment_label(kl, (0.05, 0.15, 0.50), "kl"),
+        "Wasserstein Distance": _distance_alignment_label(
+            wasserstein, (0.05, 0.15, 0.30), "wass"
+        ),
+        "Total Variation": _distance_alignment_label(tv, (0.10, 0.25, 0.40), "tv"),
     }
 
 
