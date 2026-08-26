@@ -1,12 +1,10 @@
 """Held-out model-evaluation figures. Matplotlib figures are returned, not shown."""
-
+import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.figure import Figure
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import roc_auc_score
 from sklearn.metrics import roc_curve
-
-import matplotlib.pyplot as plt
 
 
 ROC_UNAVAILABLE_ONE_CLASS = (

@@ -9,14 +9,14 @@ from sklearn.metrics import roc_auc_score
 
 from bias_audit_tool.preprocessing.modeling_pipeline import run_modeling_pipeline
 from bias_audit_tool.visualization.evaluation_plots import (
-    ROC_UNAVAILABLE_ONE_CLASS,
-)
-from bias_audit_tool.visualization.evaluation_plots import (
     build_confusion_matrix_figure,
 )
 from bias_audit_tool.visualization.evaluation_plots import build_roc_curve_figure
 from bias_audit_tool.visualization.evaluation_plots import (
     confusion_matrix_from_predictions,
+)
+from bias_audit_tool.visualization.evaluation_plots import (
+    ROC_UNAVAILABLE_ONE_CLASS,
 )
 
 
