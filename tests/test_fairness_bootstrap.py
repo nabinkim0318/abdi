@@ -296,12 +296,26 @@ def test_bootstrap_output_fairness_estimates_match_compute_output_fairness():
 
 
 def test_bootstrap_does_not_accept_or_require_a_model_object():
-    from bias_audit_tool.modeling.fairness import bootstrap_fairness_metric as fn
-
-    params = inspect.signature(fn).parameters
+    params = inspect.signature(bootstrap_fairness_metric).parameters
     assert "model" not in params
     assert "estimator" not in params
     assert "y_pred" in params
+    assert "positive_label" not in params
+    assert (
+        "positive_label"
+        not in inspect.signature(bootstrap_output_fairness).parameters
+    )
+    assert (
+        "positive_label" not in inspect.signature(compute_output_fairness).parameters
+    )
+
+
+def test_bootstrap_requires_zero_one_labels():
+    sensitive = np.array(["A", "A", "B", "B"])
+    y_true = np.array(["yes", "no", "yes", "no"])
+    y_pred = np.array(["yes", "yes", "no", "no"])
+    with pytest.raises(ValueError, match="binary 0/1 labels"):
+        bootstrap_output_fairness(y_true, y_pred, sensitive, n_bootstrap=50)
 
 
 def test_bootstrap_wording_is_not_a_fairness_verdict():

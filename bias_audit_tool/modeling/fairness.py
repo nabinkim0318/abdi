@@ -46,14 +46,18 @@ CLAIM_SAFETY_CAVEAT = (
     "unbiased, non-discriminatory, or legally compliant."
 )
 
-# Positive class for selection rate, precision/recall, DP, EO, and
-# group-support counts. The live modeling path encodes string targets to
-# 0/1 via LabelEncoder and leaves numeric 0/1 labels unchanged, so this
-# fairness layer receives binary labels whose positive class is 1. That
-# matches Fairlearn's selection_rate default (`pos_label=1`) and sklearn
-# binary metrics. Do not assume raw user labels were originally integer 1
-# before that encoding step.
+# Live model-fairness contract: y_true and y_pred are binary 0/1 with
+# positive class 1. The modeling path LabelEncodes string targets to 0/1
+# before this boundary. Fairlearn's demographic_parity_difference and
+# equalized_odds_difference do not accept pos_label and use label 1, so
+# compute_output_fairness / bootstrap do not take a custom positive_label.
+# compute_group_support may still count an explicit positive_label as a
+# pure utility; the live UI always uses 1.
 DEFAULT_POSITIVE_LABEL = 1
+ALLOWED_BINARY_FAIRNESS_LABELS = frozenset({0, 1})
+BINARY_FAIRNESS_LABELS_ERROR = (
+    "Model fairness metrics require binary 0/1 labels " "with positive class 1."
+)
 
 # Heuristic stability cutoffs for held-out group-support warnings.
 # These are not statistical-validity, legal, or fairness criteria.
@@ -553,6 +557,34 @@ def _prepare_held_out_fairness_arrays(y_true, y_pred, sensitive_features):
     return y_true, y_pred, sensitive_features, n_missing
 
 
+def _normalize_fairness_class_label(value):
+    """Map numpy/bool/integral-float labels to a Python 0/1 when possible."""
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
+
+def _observed_class_labels(values):
+    observed = set()
+    for v in np.asarray(values).ravel():
+        if pd.isna(v):
+            observed.add(None)
+            continue
+        observed.add(_normalize_fairness_class_label(v))
+    return observed
+
+
+def _validate_binary_fairness_labels(y_true, y_pred):
+    """Reject labels that are not binary 0/1 with positive class 1."""
+    for arr in (y_true, y_pred):
+        if not _observed_class_labels(arr) <= ALLOWED_BINARY_FAIRNESS_LABELS:
+            raise ValueError(BINARY_FAIRNESS_LABELS_ERROR)
+
+
 def _observed_group_labels(sensitive_features):
     """Unique held-out group labels, first-appearance order, missing omitted."""
     labels = []
@@ -587,10 +619,10 @@ def compute_group_support(
     ``compute_output_fairness`` (after excluding missing sensitive
     values). They are not population sizes.
 
-    ``positive_label`` is the class treated as the positive outcome for
-    label counts, predicted-positive counts, selection rate, precision,
-    recall, Demographic Parity, and Equalized Odds. The live path uses
-    binary 0/1 labels with positive class 1.
+    ``positive_label`` is only used for these support counts. The live
+    model-fairness path (MetricFrame, DP, EO, bootstrap) requires binary
+    0/1 labels with positive class 1 and does not accept a custom
+    positive class.
 
     Returns:
         DataFrame with one row per observed group and the columns in
@@ -747,7 +779,12 @@ def assess_group_support(
 
 
 def minimum_valid_bootstrap_replicates(n_requested):
-    """Require at least 100 valid draws and at least 50% of requested draws."""
+    """Require at least 100 valid draws and at least 50% of requested draws.
+
+    Under this default rule, ``n_bootstrap < 100`` cannot produce a CI
+    unless the caller overrides ``min_valid_replicates``. The live UI
+    uses ``DEFAULT_N_BOOTSTRAP = 500``.
+    """
     return max(100, int(np.ceil(0.5 * n_requested)))
 
 
@@ -776,7 +813,7 @@ def _replicate_groups_complete(sensitive_sample, required_groups):
     return required.issubset(present)
 
 
-def _replicate_has_eo_class_support(y_true_sample, sensitive_sample, positive_label):
+def _replicate_has_eo_class_support(y_true_sample, sensitive_sample):
     frame = pd.DataFrame(
         {
             "_y_true": y_true_sample,
@@ -784,7 +821,7 @@ def _replicate_has_eo_class_support(y_true_sample, sensitive_sample, positive_la
         }
     )
     for _, sub in frame.groupby(GROUP_COL, sort=False, dropna=True):
-        n_positive = int((sub["_y_true"] == positive_label).sum())
+        n_positive = int((sub["_y_true"] == DEFAULT_POSITIVE_LABEL).sum())
         n_negative = int(len(sub) - n_positive)
         if n_positive == 0 or n_negative == 0:
             return False
@@ -887,7 +924,6 @@ def bootstrap_fairness_metric(
     confidence_level=DEFAULT_CONFIDENCE_LEVEL,
     random_state=DEFAULT_BOOTSTRAP_RANDOM_STATE,
     min_valid_replicates=None,
-    positive_label=DEFAULT_POSITIVE_LABEL,
     require_eo_class_support=False,
 ):
     """
@@ -900,10 +936,11 @@ def bootstrap_fairness_metric(
     and its predictions. It is not training uncertainty, a population
     causal interval, a fairness guarantee, or a regulatory CI.
 
-    Replicates that lose a required group (or, for Equalized Odds, a
-    required positive/negative class inside a group) are marked invalid
-    and excluded from the percentile calculation. They are not replaced
-    with 0, inf, or any other fabricated value.
+    Labels must be binary 0/1 with positive class 1, matching Fairlearn
+    DP/EO. Replicates that lose a required group (or, for Equalized
+    Odds, a required positive/negative class inside a group) are marked
+    invalid and excluded from the percentile calculation. They are not
+    replaced with 0, inf, or any other fabricated value.
     """
     if n_bootstrap < 1:
         raise ValueError("n_bootstrap must be at least 1")
@@ -913,6 +950,7 @@ def bootstrap_fairness_metric(
     y_true, y_pred, sensitive_features, _n_missing = (
         _prepare_held_out_fairness_arrays(y_true, y_pred, sensitive_features)
     )
+    _validate_binary_fairness_labels(y_true, y_pred)
     required_groups = _observed_group_labels(sensitive_features)
     if min_valid_replicates is None:
         min_valid_replicates = minimum_valid_bootstrap_replicates(n_bootstrap)
@@ -922,7 +960,10 @@ def bootstrap_fairness_metric(
     )
     estimate = None if isinstance(point, dict) else point
     support_df = compute_group_support(
-        y_true, y_pred, sensitive_features, positive_label=positive_label
+        y_true,
+        y_pred,
+        sensitive_features,
+        positive_label=DEFAULT_POSITIVE_LABEL,
     )
 
     rng = np.random.default_rng(random_state)
@@ -936,7 +977,7 @@ def bootstrap_fairness_metric(
         if not _replicate_groups_complete(sens_b, required_groups):
             continue
         if require_eo_class_support and not _replicate_has_eo_class_support(
-            y_b, sens_b, positive_label
+            y_b, sens_b
         ):
             continue
         value = _fairlearn_metric_or_undefined(metric_fn, y_b, pred_b, sens_b)
@@ -996,7 +1037,6 @@ def bootstrap_output_fairness(
     confidence_level=DEFAULT_CONFIDENCE_LEVEL,
     random_state=DEFAULT_BOOTSTRAP_RANDOM_STATE,
     min_valid_replicates=None,
-    positive_label=DEFAULT_POSITIVE_LABEL,
 ):
     """
     Percentile bootstrap CIs for Demographic Parity and Equalized Odds.
@@ -1005,6 +1045,8 @@ def bootstrap_output_fairness(
     sensitive_features)`` tuples. The model is not retrained. Reported
     ``estimate`` values are the ordinary Fairlearn point estimates on
     the original held-out arrays, not bootstrap means.
+
+    Labels must be binary 0/1 with positive class 1.
     """
     dp = bootstrap_fairness_metric(
         y_true,
@@ -1015,7 +1057,6 @@ def bootstrap_output_fairness(
         confidence_level=confidence_level,
         random_state=random_state,
         min_valid_replicates=min_valid_replicates,
-        positive_label=positive_label,
         require_eo_class_support=False,
     )
     eo = bootstrap_fairness_metric(
@@ -1027,7 +1068,6 @@ def bootstrap_output_fairness(
         confidence_level=confidence_level,
         random_state=random_state,
         min_valid_replicates=min_valid_replicates,
-        positive_label=positive_label,
         require_eo_class_support=True,
     )
     return {
@@ -1036,12 +1076,7 @@ def bootstrap_output_fairness(
     }
 
 
-def compute_output_fairness(
-    y_true,
-    y_pred,
-    sensitive_features,
-    positive_label=DEFAULT_POSITIVE_LABEL,
-):
+def compute_output_fairness(y_true, y_pred, sensitive_features):
     """
     Group-wise held-out fairness metrics for a binary classifier.
 
@@ -1050,30 +1085,31 @@ def compute_output_fairness(
     sensitive values are excluded before MetricFrame so group metrics
     and group-support counts describe the same rows.
 
-    The positive class defaults to ``1``, matching Fairlearn
-    ``selection_rate`` and sklearn binary metrics. The live modeling
-    path supplies 0/1 labels at this boundary (string targets are
-    LabelEncoded earlier). Precision, recall, F1, and selection rate
-    all use this same ``positive_label``.
+    Labels must be binary 0/1 with positive class 1. That matches
+    Fairlearn ``demographic_parity_difference`` /
+    ``equalized_odds_difference``, which do not accept ``pos_label``.
+    The live modeling path supplies 0/1 labels at this boundary
+    (string targets are LabelEncoded earlier). Precision, recall, F1,
+    selection rate, DP, and EO all use this same positive class.
     """
     y_true, y_pred, sensitive_features, _n_missing = (
         _prepare_held_out_fairness_arrays(y_true, y_pred, sensitive_features)
     )
-    pos = positive_label
+    _validate_binary_fairness_labels(y_true, y_pred)
 
     metrics = {
         "Accuracy": accuracy_score,
-        "Precision": lambda yt, yp, _pos=pos: precision_score(
-            yt, yp, zero_division=0, pos_label=_pos
+        "Precision": lambda yt, yp: precision_score(
+            yt, yp, zero_division=0, pos_label=DEFAULT_POSITIVE_LABEL
         ),
-        "Recall": lambda yt, yp, _pos=pos: recall_score(
-            yt, yp, zero_division=0, pos_label=_pos
+        "Recall": lambda yt, yp: recall_score(
+            yt, yp, zero_division=0, pos_label=DEFAULT_POSITIVE_LABEL
         ),
-        "F1": lambda yt, yp, _pos=pos: f1_score(
-            yt, yp, zero_division=0, pos_label=_pos
+        "F1": lambda yt, yp: f1_score(
+            yt, yp, zero_division=0, pos_label=DEFAULT_POSITIVE_LABEL
         ),
-        "Selection Rate": lambda yt, yp, _pos=pos: selection_rate(
-            yt, yp, pos_label=_pos
+        "Selection Rate": lambda yt, yp: selection_rate(
+            yt, yp, pos_label=DEFAULT_POSITIVE_LABEL
         ),
     }
 
