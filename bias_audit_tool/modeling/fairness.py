@@ -1,5 +1,6 @@
 # utils/fairness.py
 import itertools
+import json
 import warnings
 
 import matplotlib.pyplot as plt
@@ -26,20 +27,35 @@ PLAIN_METRIC_NAMES = {
     "Selection Rate": "Group Selection Rate",
 }
 
-# Updated TNBC benchmark based on your requirements
-TNBC_RACE_BENCHMARK = {
-    "Black": 0.36,  # 36% - highest incidence
-    "White": 0.19,  # 19%
-    "Hispanic": 0.16,  # 16%
-    "AIAN": 0.16,  # 16% (American Indian/Alaska Native)
-    "Asian": 0.13,  # 13% (updated from your table)
-}
+# Criterion-based labels for representation ratios vs a user-supplied
+# benchmark. These are not fairness verdicts.
+THRESHOLD_STATUS_COL = "Within Threshold?"
+WITHIN_THRESHOLD = "Yes"
+OUTSIDE_THRESHOLD = "No"
+NO_BENCHMARK_AVAILABLE = "No benchmark available"
+
+NO_BENCHMARK_SELECTED_MESSAGE = (
+    "No benchmark selected. Provide an expected distribution to compute "
+    "benchmark-relative representation disparities."
+)
+ALL_GROUPS_WITHIN_THRESHOLD_MESSAGE = (
+    "All benchmarked groups fall within the selected disparity-ratio " "threshold."
+)
+FAIRNESS_METRIC_CAVEAT = (
+    "Different fairness metrics can disagree, especially when outcome "
+    "base rates differ by group. No single metric proves a model is fair."
+)
+CLAIM_SAFETY_CAVEAT = (
+    "This is an exploratory diagnostic based on the selected metric and "
+    "benchmark. It does not establish that a model or dataset is fair, "
+    "unbiased, non-discriminatory, or legally compliant."
+)
 
 
 def interpret_fairness_metrics(kl, wasserstein, tv):
     """
     Interpret KL Divergence, Wasserstein Distance, and Total Variation
-    into severity labels for TNBC fairness auditing.
+    into severity labels for distribution-alignment diagnostics.
     """
 
     def label_kl(val):
@@ -79,6 +95,38 @@ def interpret_fairness_metrics(kl, wasserstein, tv):
     }
 
 
+def is_valid_benchmark(benchmark_distribution) -> bool:
+    """True when a non-empty expected-distribution dict was supplied."""
+    return (
+        isinstance(benchmark_distribution, dict) and len(benchmark_distribution) > 0
+    )
+
+
+def parse_user_benchmark(benchmark_json):
+    """
+    Parse a user-supplied expected-distribution JSON string.
+
+    Empty input is a missing benchmark, not a silent fallback. Invalid JSON
+    is also treated as missing (no fabricated substitute distribution).
+
+    Returns:
+        (benchmark_dict_or_None, status) where status is "ok", "missing",
+        or "invalid".
+    """
+    if benchmark_json is None:
+        return None, "missing"
+    text = str(benchmark_json).strip()
+    if not text:
+        return None, "missing"
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return None, "invalid"
+    if not is_valid_benchmark(parsed):
+        return None, "missing"
+    return parsed, "ok"
+
+
 def validate_inputs(df, demographic_col, benchmark_distribution):
     """Validate inputs for fairness analysis."""
     if df is None or df.empty:
@@ -87,8 +135,14 @@ def validate_inputs(df, demographic_col, benchmark_distribution):
     if demographic_col not in df.columns:
         raise ValueError(f"Column '{demographic_col}' not found in DataFrame")
 
+    if benchmark_distribution is None:
+        return
+
     if not isinstance(benchmark_distribution, dict):
         raise ValueError("benchmark_distribution must be a dictionary")
+
+    if not benchmark_distribution:
+        return
 
     # Check if benchmark sums to ~1.0
     total_benchmark = sum(benchmark_distribution.values())
@@ -167,6 +221,15 @@ def _interpret_effect_size(cohen_d):
         return "Large"
 
 
+def _threshold_status(ratio, threshold_low, threshold_high):
+    """Map a disparity ratio to a criterion label, not a fairness verdict."""
+    if pd.isna(ratio):
+        return NO_BENCHMARK_AVAILABLE
+    if threshold_low <= ratio <= threshold_high:
+        return WITHIN_THRESHOLD
+    return OUTSIDE_THRESHOLD
+
+
 def compare_distributions(p, q, method="kl"):
     """
     Compare two distributions using KL divergence or Wasserstein distance.
@@ -204,28 +267,50 @@ def compute_input_fairness(
     sort_by: str = "Observed_%",
 ) -> pd.DataFrame:
     """
-    Detects unfair representation by comparing observed vs expected proportions.
+    Compare observed group shares to an explicit expected distribution.
+
+    No domain-specific benchmark (including any TNBC incidence table) is
+    applied automatically. If `benchmark_distribution` is missing or empty,
+    observed counts are still returned, but benchmark-relative ratios are
+    not computed.
 
     Returns:
-    - DataFrame with fairness assessment and distribution metrics
+        DataFrame with observed shares and, when a benchmark is supplied,
+        disparity ratios plus a `Within Threshold?` criterion column.
     """
-    # Use TNBC benchmark as default
-    if benchmark_distribution is None:
-        benchmark_distribution = TNBC_RACE_BENCHMARK
-        print("Using default TNBC race benchmark distribution")
-
     validate_inputs(df, demographic_col, benchmark_distribution)
 
-    # Count and compute proportions
     observed_counts = df[demographic_col].value_counts(dropna=False)
     total = len(df)
     observed_percent = observed_counts / total
 
     result_df = pd.DataFrame(
-        {"Observed_Count": observed_counts, "Observed_%": observed_percent}
+        {
+            "Observed_Count": observed_counts,
+            "Observed_%": observed_percent,
+        }
     )
 
-    # Map benchmark (groups absent from the benchmark stay NaN; no fabricated value)
+    has_benchmark = is_valid_benchmark(benchmark_distribution)
+    if not has_benchmark:
+        result_df["Expected_%"] = np.nan
+        result_df["Disparity_Ratio"] = np.nan
+        result_df["Absolute_Difference"] = np.nan
+        result_df[THRESHOLD_STATUS_COL] = NO_BENCHMARK_AVAILABLE
+        result_df["Deviation_Type"] = NO_BENCHMARK_AVAILABLE
+        result_df.attrs["benchmark_status"] = "missing"
+        result_df.attrs["benchmark_message"] = NO_BENCHMARK_SELECTED_MESSAGE
+        result_df.attrs["KL_Divergence"] = "N/A"
+        result_df.attrs["Wasserstein_Distance"] = "N/A"
+        result_df.attrs["Total_Variation"] = "N/A"
+        result_df = result_df.sort_values(sort_by, ascending=False).reset_index()
+        result_df = result_df.rename(columns={"index": "Group"})
+        return result_df
+
+    result_df.attrs["benchmark_status"] = "ok"
+    result_df.attrs["benchmark_message"] = None
+
+    # Groups absent from the benchmark stay NaN; no fabricated value.
     result_df["Expected_%"] = result_df.index.map(benchmark_distribution)
     missing_groups = result_df["Expected_%"].isnull().sum()
     if missing_groups > 0:
@@ -235,27 +320,19 @@ def compute_input_fairness(
             "instead of being assigned a fabricated expected value."
         )
 
-    # Compute disparity metrics. Groups without a benchmark yield NaN here
-    # (Observed_% / NaN), which is the honest "not computable" value rather
-    # than a synthetic ratio derived from a made-up expected proportion.
+    # Groups without a benchmark yield NaN (Observed_% / NaN).
     result_df["Disparity_Ratio"] = result_df["Observed_%"] / result_df["Expected_%"]
     result_df["Absolute_Difference"] = abs(
         result_df["Observed_%"] - result_df["Expected_%"]
     )
 
-    # Fairness assessment with detailed reasons. Unbenchmarked groups (NaN
-    # ratio) are surfaced explicitly instead of being classified as fair/unfair.
-    result_df["Fair?"] = result_df["Disparity_Ratio"].apply(
-        lambda x: (
-            "No benchmark available"
-            if pd.isna(x)
-            else "Fair" if threshold_low <= x <= threshold_high else "Not Fair"
-        )
+    result_df[THRESHOLD_STATUS_COL] = result_df["Disparity_Ratio"].apply(
+        lambda x: _threshold_status(x, threshold_low, threshold_high)
     )
 
     result_df["Deviation_Type"] = result_df["Disparity_Ratio"].apply(
         lambda x: (
-            "No benchmark available"
+            NO_BENCHMARK_AVAILABLE
             if pd.isna(x)
             else (
                 "Under-represented"
@@ -265,9 +342,7 @@ def compute_input_fairness(
         )
     )
 
-    # Store distribution comparison metrics, computed only over benchmarked
-    # groups: a group with no expected value has nothing to compare against,
-    # and letting its NaN leak in would silently NaN out the whole distance.
+    # Distances use benchmarked groups only.
     benchmarked = result_df.dropna(subset=["Expected_%"])
     obs_dist = benchmarked["Observed_%"].values
     exp_dist = benchmarked["Expected_%"].values
@@ -287,7 +362,6 @@ def compute_input_fairness(
         result_df.attrs["Wasserstein_Distance"] = "N/A"
         result_df.attrs["Total_Variation"] = "N/A"
 
-    # Sort and clean up
     result_df = result_df.sort_values(sort_by, ascending=False).reset_index()
     result_df = result_df.rename(columns={"index": "Group"})
 
@@ -305,8 +379,9 @@ def plot_input_fairness(fairness_result, top_n=20, figsize=(12, 8)):
             "Disparity_Ratio", ascending=False
         ).head(top_n)
 
-        # Create color mapping based on fairness
-        colors = plot_df["Fair?"].map({"Fair": "#2E8B57", "Not Fair": "#DC143C"})
+        colors = plot_df[THRESHOLD_STATUS_COL].map(
+            {WITHIN_THRESHOLD: "#2E8B57", OUTSIDE_THRESHOLD: "#DC143C"}
+        )
 
         fig, ax = plt.subplots(figsize=figsize)
         sns.barplot(
@@ -368,46 +443,58 @@ def plot_input_fairness(fairness_result, top_n=20, figsize=(12, 8)):
         return None
 
 
+def render_fairness_caveats():
+    """Standing claim-safety notes for live fairness diagnostics."""
+    st.info(FAIRNESS_METRIC_CAVEAT)
+    st.caption(CLAIM_SAFETY_CAVEAT)
+
+
 def display_fairness_summary(result_df: pd.DataFrame, top_n: int = 5):
-    """Enhanced summary with actionable insights, but WITHOUT the Top 5
-    groups section."""
+    """Summary of representation diagnostics against a selected benchmark."""
 
     if result_df is None or result_df.empty:
         st.error("No fairness data to display")
         return
 
-    total_groups = len(result_df)
-    fair_groups = (result_df["Fair?"] == "Fair").sum()
-    unfair_groups = total_groups - fair_groups
+    render_fairness_caveats()
 
-    # Get distribution metrics
+    if result_df.attrs.get("benchmark_status") != "ok":
+        st.info(
+            result_df.attrs.get("benchmark_message", NO_BENCHMARK_SELECTED_MESSAGE)
+        )
+        with st.expander("📋 Observed group shares"):
+            st.dataframe(result_df, use_container_width=True)
+        return
+
+    total_groups = len(result_df)
+    within_groups = (result_df[THRESHOLD_STATUS_COL] == WITHIN_THRESHOLD).sum()
+    outside_groups = (result_df[THRESHOLD_STATUS_COL] == OUTSIDE_THRESHOLD).sum()
+    unbenchmarked_groups = (
+        result_df[THRESHOLD_STATUS_COL] == NO_BENCHMARK_AVAILABLE
+    ).sum()
+
     kl_div = result_df.attrs.get("KL_Divergence", "N/A")
     wass_dist = result_df.attrs.get("Wasserstein_Distance", "N/A")
     total_var = result_df.attrs.get("Total_Variation", "N/A")
     interpretations = interpret_fairness_metrics(kl_div, wass_dist, total_var)
 
-    # Main summary metrics
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Total Groups", total_groups)
     with col2:
-        st.metric(
-            "Fair Groups", fair_groups, delta=f"{fair_groups/total_groups:.1%}"
-        )
+        st.metric("Within Threshold", within_groups)
     with col3:
-        st.metric(
-            "Unfair Groups",
-            unfair_groups,
-            delta=f"-{unfair_groups/total_groups:.1%}",
-        )
+        st.metric("Outside Threshold", outside_groups)
+    with col4:
+        st.metric("No Benchmark", unbenchmarked_groups)
 
-    # Distribution distance metrics
     st.markdown("### 📐 Distribution Distance Metrics")
     metrics_col1, metrics_col2, metrics_col3 = st.columns(3)
 
     with metrics_col1:
         st.metric(
-            "KL Divergence", f"{kl_div:.4f}" if isinstance(kl_div, float) else kl_div
+            "KL Divergence",
+            f"{kl_div:.4f}" if isinstance(kl_div, float) else kl_div,
         )
         st.caption(interpretations["KL Divergence"])
     with metrics_col2:
@@ -423,16 +510,10 @@ def display_fairness_summary(result_df: pd.DataFrame, top_n: int = 5):
         )
         st.caption(interpretations["Total Variation"])
 
-    # ✅ Removed the Top 5 unfair groups section here
+    if outside_groups == 0 and within_groups > 0:
+        st.info(ALL_GROUPS_WITHIN_THRESHOLD_MESSAGE)
 
-    # ✅ Keep the success message for when all groups are fair
-    if unfair_groups == 0:
-        st.success(
-            "✅ All demographic groups are within acceptable fairness thresholds!"
-        )
-
-    # Full fairness table (kept as is)
-    with st.expander("📋 Complete Fairness Analysis"):
+    with st.expander("📋 Complete representation analysis"):
         formatted_df = result_df.style.format(
             {
                 "Observed_%": "{:.2%}",
@@ -448,8 +529,7 @@ def display_fairness_summary(result_df: pd.DataFrame, top_n: int = 5):
 
 
 def _undefined_metric(reason, **details):
-    """Explicit marker for a fairness metric that could not be computed
-    as a number."""
+    """Marker for a fairness metric that could not be computed as a number."""
     return {"status": "undefined", "reason": reason, **details}
 
 
@@ -598,20 +678,26 @@ def run_complete_fairness_audit(
             "disparities": disparities,
         }
 
-    # Summary
-    unfair_input_groups = (input_fairness["Fair?"] == "Not Fair").sum()
+    outside_threshold_groups = (
+        input_fairness[THRESHOLD_STATUS_COL] == OUTSIDE_THRESHOLD
+    ).sum()
     total_groups = len(input_fairness)
 
     results["summary"] = {
         "total_groups": total_groups,
-        "unfair_input_groups": unfair_input_groups,
-        "input_fairness_rate": (total_groups - unfair_input_groups) / total_groups,
+        "outside_threshold_groups": outside_threshold_groups,
+        "within_threshold_rate": (
+            (total_groups - outside_threshold_groups) / total_groups
+            if total_groups
+            else None
+        ),
         "kl_divergence": input_fairness.attrs.get("KL_Divergence"),
         "wasserstein_distance": input_fairness.attrs.get("Wasserstein_Distance"),
+        "benchmark_status": input_fairness.attrs.get("benchmark_status"),
     }
 
     print(
-        f"✅ Audit complete! {unfair_input_groups}/{total_groups} "
-        "groups flagged for input fairness"
+        f"Audit complete. {outside_threshold_groups}/{total_groups} groups "
+        "outside the selected disparity-ratio threshold."
     )
     return results

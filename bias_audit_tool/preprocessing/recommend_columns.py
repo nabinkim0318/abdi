@@ -4,29 +4,11 @@ from typing import Optional
 
 import pandas as pd
 
-DEMOGRAPHIC_KEYWORDS = [
-    r"gender|sex",
-    r"age",
-    r"race|ethnicity|ethnic",
-    r"income|salary|wage",
-    r"education|degree|school",
-    r"employment|job|occupation",
-    r"disability|impairment",
-    r"language|lang",
-    r"region|zip|location|state|city",
-    r"religion|faith",
-    r"orientation|sexual",
-    r"marital|relationship",
-    r"children|kids|dependents",
-    r"family",
-]
-
-VALUE_PATTERNS = {
-    "gender": ["male", "female", "nonbinary"],
-    "race": ["white", "black", "asian", "hispanic"],
-    "marital": ["married", "single", "divorced"],
-}
-
+# Live recommendation is a column-name substring heuristic plus simple
+# metadata filters (cardinality, missingness, dtype). It does not infer
+# protected characteristics from values, is English-vocabulary only, and
+# is not jurisdictionally exhaustive. Unused regex/value matchers were
+# removed so the implementation matches what the UI actually does.
 DEMOGRAPHIC_CATEGORIES = [
     "gender",
     "sex",
@@ -46,6 +28,11 @@ DEMOGRAPHIC_CATEGORIES = [
     "family",
 ]
 
+SENSITIVE_ATTRIBUTE_CANDIDATE_CAPTION = (
+    "Candidate sensitive attributes based on column-name and metadata "
+    "heuristics — review before use."
+)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -53,6 +40,22 @@ logging.basicConfig(
 
 
 def identify_by_hierarchy(df: pd.DataFrame) -> list[str]:
+    """
+    List columns whose names look demographic under a name heuristic.
+
+    A column is a name-level candidate if it starts with ``demographics.``
+    or if any token in ``DEMOGRAPHIC_CATEGORIES`` is a case-insensitive
+    substring of the column name.
+
+    This is not protected-class detection. Known limitations, documented
+    by tests:
+    - False-positive risk: names such as ``region_id``,
+      ``family_history_of_cancer``, and ``device_orientation`` match
+      because they contain ``region``, ``family``, or ``orientation``.
+    - False-negative / unsupported vocabulary: names such as
+      ``nationality``, ``citizenship``, and non-English demographic
+      terms are not guaranteed to match.
+    """
     matched = [
         col
         for col in df.columns
@@ -226,11 +229,18 @@ def recommend_demographic_columns(
     df: pd.DataFrame, demographic_cols: Optional[List[str]] = None
 ) -> tuple[pd.DataFrame, List[str]]:
     """
-    Recommend demographic columns for grouping.
+    Return candidate grouping columns from name + metadata heuristics.
 
-    Returns:
-        A list of column names that are suitable for demographic grouping,
-        or None if no suitable column is found.
+    Algorithm:
+    1. Optionally merge known one-hot demographic dummy prefixes.
+    2. Name filter via ``identify_by_hierarchy`` (substring of
+       ``DEMOGRAPHIC_CATEGORIES``, or ``demographics.`` prefix).
+    3. Keep columns with 2–15 unique non-null values, categorical-like
+       dtype (object/string, binary, or integer with ≤15 levels), and
+       missingness ≤ 50%.
+
+    Candidates require human review. Non-recommended columns may still
+    be sensitive; recommended columns may be false positives.
     """
     # Step 1: Merge dummy columns and get mapping to _mapped names
     df, mapping = merge_dummy_columns_and_get_mapping(

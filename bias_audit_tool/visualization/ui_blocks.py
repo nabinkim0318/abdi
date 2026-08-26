@@ -1,9 +1,8 @@
-import json
-
 import streamlit as st
 
 from bias_audit_tool.modeling.fairness import compute_input_fairness
 from bias_audit_tool.modeling.fairness import display_fairness_summary
+from bias_audit_tool.modeling.fairness import parse_user_benchmark
 from bias_audit_tool.report.report_generator import generate_pdf_report
 from bias_audit_tool.visualization.visualization import plot_distribution_comparison
 from bias_audit_tool.visualization.visualization import show_visualizations
@@ -234,46 +233,36 @@ def audit_and_visualize(df_proc, recommendations):
 
 def audit_and_visualize_fairness(df, group_col):
     try:
-        st.subheader("📊 Fairness Audit Results")
-        # 2. Provide or input benchmark distribution
-        default_benchmark = (
-            df.loc[df[group_col] != "unknown", group_col]
-            .value_counts(normalize=True)
-            .round(3)
-            .to_dict()
+        st.subheader("📊 Representation disparity diagnostics")
+        st.markdown(
+            "📌 Provide an **explicit expected distribution** to compute "
+            "benchmark-relative representation disparities. JSON format: "
+            "`{'GroupA': 0.5, 'GroupB': 0.5}`. Leave empty if no benchmark "
+            "has been selected."
         )
 
         if "benchmark_json" not in st.session_state:
-            st.session_state["benchmark_json"] = json.dumps(
-                default_benchmark, indent=2
-            )
-
-        st.markdown(
-            "📌 Specify benchmark distribution (optional, "
-            "JSON format: {'GroupA': 0.5, 'GroupB': 0.5})"
-        )
+            st.session_state["benchmark_json"] = ""
 
         benchmark_json = st.text_area(
-            "Enter benchmark distribution as JSON", key="benchmark_json"
+            "Expected distribution (JSON). Leave empty for no benchmark.",
+            key="benchmark_json",
         )
 
-        try:
-            benchmark = json.loads(benchmark_json)
-            print(f"[DEBUG] benchmark distribution: {benchmark}")
+        benchmark, benchmark_status = parse_user_benchmark(benchmark_json)
+        if benchmark_status == "invalid":
+            st.warning(
+                "Invalid JSON. Benchmark-relative representation analysis "
+                "was not computed."
+            )
 
-        except json.JSONDecodeError:
-            st.warning("⚠️ Invalid JSON, using " "observed distribution instead.")
-            benchmark = default_benchmark
-
-        # 3. Run fairness analysis
         fairness_result = compute_input_fairness(
             df, demographic_col=group_col, benchmark_distribution=benchmark
         )
-        st.session_state["fairness_result"] = fairness_result  # ✅ persist
+        st.session_state["fairness_result"] = fairness_result
         st.session_state["step3_done"] = True
         print(f"[DEBUG] fairness_result: {fairness_result}")
 
-        # 4. Show summary results
         display_fairness_summary(fairness_result)
 
         with st.expander("📈 Observed vs Expected Distribution"):

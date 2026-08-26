@@ -8,6 +8,9 @@ from bias_audit_tool.data.data_loader import load_and_preview_data
 from bias_audit_tool.preprocessing.recommend_columns import (
     recommend_demographic_columns,
 )
+from bias_audit_tool.preprocessing.recommend_columns import (
+    SENSITIVE_ATTRIBUTE_CANDIDATE_CAPTION,
+)
 from bias_audit_tool.utils.ui_helpers import apply_preprocessing_and_display
 from bias_audit_tool.utils.ui_helpers import display_preprocessing_recommendations
 from bias_audit_tool.utils.ui_helpers import get_user_preprocessing_options
@@ -127,6 +130,7 @@ def main():
                 demo_cols = st.session_state.demo_cols
 
             if demo_cols:
+                st.caption(SENSITIVE_ATTRIBUTE_CANDIDATE_CAPTION)
                 previous_selection = st.session_state.get("group_col", demo_cols[0])
                 default_index = (
                     demo_cols.index(previous_selection)
@@ -134,7 +138,11 @@ def main():
                     else 0
                 )
             else:
-                st.warning("No suitable demographic columns found.")
+                st.warning(
+                    "No candidate sensitive attributes matched the "
+                    "column-name heuristic. This does not mean the dataset "
+                    "has no sensitive attributes — review columns before use."
+                )
                 return
 
             # Step 3b: Visualizations + Audit
@@ -164,7 +172,7 @@ def main():
                 # Allow user to experiment with multiple demographic columns
                 previous_selection = st.session_state.get("group_col", demo_cols[0])
                 group_col = st.selectbox(
-                    "Select demographic column",
+                    "Select candidate sensitive attribute",
                     options=demo_cols,
                     index=(
                         demo_cols.index(previous_selection)

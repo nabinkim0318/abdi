@@ -1,15 +1,15 @@
 # 🧮 Bias Audit Tool
 
-A modular and interactive tool for auditing bias and fairness in machine learning datasets and models. Powered by `Streamlit`, `scikit-learn`, and `fairlearn`, it helps data scientists and researchers evaluate performance disparities across demographic groups.
+Exploratory bias and fairness diagnostics for tabular datasets using Fairlearn and scikit-learn. The app helps researchers inspect representation and performance disparities across groups. It does not establish that a dataset or model is fair, unbiased, non-discriminatory, or legally compliant.
 
 ---
 
 ## 🚀 Features
 
 - Easy upload and preprocessing of CSV datasets
-- Automatic recommendation of sensitive columns
-- Fairness metric computation (e.g., Equalized Odds, Demographic Parity)
-- Basic model training and bias evaluation
+- Candidate sensitive attributes based on column-name and metadata heuristics — review before use
+- Exploratory fairness/disparity diagnostics (e.g., Equalized Odds, Demographic Parity)
+- Basic model training and disparity evaluation
 - Summary statistics, visualizations, and automated reports
 
 ---
@@ -53,7 +53,7 @@ bias_audit_tool/
 │   └── model_selector.py          # Baseline model training and evaluation
 ├── preprocessing/
 │   ├── preprocess.py              # Preprocessing workflow manager
-│   ├── recommend_columns.py       # Automatic sensitive attribute detection
+│   ├── recommend_columns.py       # Heuristic candidate sensitive attributes
 │   ├── summary.py                 # Feature summary statistics
 │   └── transform.py               # Missing value imputation, scaling
 ├── report/

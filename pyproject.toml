@@ -1,7 +1,7 @@
 [project]
 name = "abdi"
 version = "0.1.0"
-description = "Bias auditing and fairness analysis tool for clinical datasets"
+description = "Exploratory bias and fairness diagnostics for tabular datasets using Fairlearn and scikit-learn."
 authors = [
     { name = "Nabin Kim", email = "nabinkim0318@gmail.com" }
 ]

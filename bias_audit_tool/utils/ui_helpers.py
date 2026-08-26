@@ -4,6 +4,7 @@ import streamlit as st
 from sklearn.metrics import roc_auc_score
 
 from bias_audit_tool.modeling.fairness import compute_output_fairness
+from bias_audit_tool.modeling.fairness import render_fairness_caveats
 from bias_audit_tool.modeling.target_validation import UnsupportedTargetError
 from bias_audit_tool.preprocessing.modeling_pipeline import run_modeling_pipeline
 from bias_audit_tool.preprocessing.preprocess import recommend_preprocessing
@@ -217,8 +218,9 @@ def run_modeling_and_fairness(
         st.dataframe(results.feature_importance.head(10))
 
     if group_col:
-        st.markdown("### ⚖️ Fairness Audit with `fairlearn`")
+        st.markdown("### ⚖️ Fairness diagnostics with `fairlearn`")
         st.markdown(f"#### Sensitive Attribute: `{group_col}`")
+        render_fairness_caveats()
 
         try:
             metric_frame, fairness_summary = compute_output_fairness(
@@ -230,7 +232,7 @@ def run_modeling_and_fairness(
             st.markdown("📊 Group-wise Metrics")
             st.dataframe(metric_frame.by_group)
 
-            st.markdown("🧾 Summary of Fairness Disparities")
+            st.markdown("🧾 Summary of group disparities")
             for key, value in fairness_summary.items():
                 if isinstance(value, (int, float)):
                     st.markdown(f"- **{key}**: `{value:.4f}`")
