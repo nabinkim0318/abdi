@@ -1,7 +1,7 @@
-import hashlib
 import importlib.util
 import json
 import math
+from io import StringIO
 from pathlib import Path
 
 import pandas as pd
@@ -140,11 +140,12 @@ def test_generator_is_deterministic_and_matches_committed_demo():
     first = generator.dataframe_to_csv_text(generator.build_demo_dataframe())
     second = generator.dataframe_to_csv_text(generator.build_demo_dataframe())
     assert first == second
-    committed = DEMO_CSV.read_text(encoding="utf-8")
-    assert committed == first
-    assert (
-        hashlib.sha256(committed.encode("utf-8")).hexdigest()
-        == hashlib.sha256(first.encode("utf-8")).hexdigest()
+
+    # CSV float text can differ by 1 ULP across platforms; compare numerically.
+    committed = pd.read_csv(DEMO_CSV)
+    generated = pd.read_csv(StringIO(first))
+    pd.testing.assert_frame_equal(
+        committed, generated, check_dtype=False, rtol=1e-12, atol=1e-15
     )
     expected_benchmark = json.dumps(generator.SYNTHETIC_BENCHMARK, indent=2) + "\n"
     assert DEMO_BENCHMARK.read_text(encoding="utf-8") == expected_benchmark
