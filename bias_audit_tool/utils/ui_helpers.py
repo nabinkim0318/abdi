@@ -4,7 +4,8 @@ import streamlit as st
 from sklearn.metrics import roc_auc_score
 
 from bias_audit_tool.modeling.fairness import compute_output_fairness
-from bias_audit_tool.modeling.model_selector import run_basic_modeling
+from bias_audit_tool.modeling.target_validation import UnsupportedTargetError
+from bias_audit_tool.preprocessing.modeling_pipeline import run_modeling_pipeline
 from bias_audit_tool.preprocessing.preprocess import recommend_preprocessing
 from bias_audit_tool.preprocessing.summary import summarize_categories
 from bias_audit_tool.preprocessing.transform import apply_preprocessing
@@ -149,71 +150,97 @@ def apply_preprocessing_and_display(df, recommendations, show_logs, options):
     return df_proc
 
 
-def run_modeling_and_fairness(df_proc, target_col, selected_demo_cols):
+def run_modeling_and_fairness(
+    raw_df,
+    df_proc,
+    target_col,
+    group_col,
+    include_sensitive_as_feature,
+    recommendations,
+):
     """
-    Run basic ML modeling and fairness evaluation with Streamlit UI.
+    Run the leakage-safe modeling pipeline and fairness evaluation with
+    Streamlit UI.
+
+    Preprocessing (imputation, scaling, encoding) is fit on the training
+    split only, using `raw_df` (the original uploaded data) rather than
+    `df_proc` (which was preprocessed on the full dataset for the
+    exploratory/visualization workflow). `df_proc` is used only to source
+    the already-cleaned row set and the human-readable sensitive-attribute
+    values used for fairness grouping.
 
     Args:
-        df_proc (pd.DataFrame): Preprocessed DataFrame used for training.
+        raw_df (pd.DataFrame): Original uploaded DataFrame.
+        df_proc (pd.DataFrame): Exploratory-preprocessed DataFrame (row set
+            + sensitive attribute values for fairness grouping).
         target_col (str): Name of the target variable column.
-        selected_demo_cols (list[str]): List of sensitive attributes for
-                                        fairness audit.
+        group_col (str): Name of the single sensitive attribute selected
+            for fairness grouping.
+        include_sensitive_as_feature (bool): Whether `group_col` should also
+            be used as a predictive model feature.
+        recommendations (dict): Column preprocessing recommendations
+            computed on `raw_df`.
 
     Displays:
         - Classification report
         - ROC AUC score (if available)
-        - Fairness metrics and disparity summary by group
+        - Fairness metrics and disparity summary for the selected group
     """
     st.markdown("## 🧠 Machine Learning Modeling")
 
-    X = df_proc.drop(columns=[target_col])
-    y = df_proc[target_col]
-
     try:
-        results = run_basic_modeling(X, y)
-
-        st.markdown("### 🔍 Classification Report")
-        st.dataframe(results["report"])
-
-        if results["y_prob"] is not None:
-            auc = roc_auc_score(results["y_test"], results["y_prob"])
-            st.markdown(f"📈 ROC AUC: `{auc:.2f}`")
-
-        # Feature Importance
-        if "feature_importance" in results:
-            st.markdown("### 🔍 Feature Importance (Permutation)")
-            st.dataframe(results["feature_importance"].head(10))
-
-        if selected_demo_cols:
-            st.markdown("### ⚖️ Fairness Audit with `fairlearn`")
-            for attr in selected_demo_cols:
-                st.markdown(f"#### Sensitive Attribute: `{attr}`")
-
-                try:
-                    metric_frame, fairness_summary = compute_output_fairness(
-                        y_true=results["y_test"],
-                        y_pred=results["y_pred"],
-                        sensitive_features=X[attr].loc[results["y_test"].index],
-                    )
-
-                    st.markdown("📊 Group-wise Metrics")
-                    st.dataframe(metric_frame.by_group)
-
-                    st.markdown("🧾 Summary of Fairness Disparities")
-                    for key, value in fairness_summary.items():
-                        if isinstance(value, (int, float)):
-                            st.markdown(f"- **{key}**: `{value:.4f}`")
-                        else:
-                            reason = (
-                                value.get("reason", "undefined")
-                                if isinstance(value, dict)
-                                else value
-                            )
-                            st.markdown(f"- **{key}**: `Undefined` — {reason}")
-
-                except Exception as e:
-                    st.warning(f"Could not compute fairness for `{attr}`: {e}")
-
+        results = run_modeling_pipeline(
+            raw_df=raw_df,
+            df_proc=df_proc,
+            target_col=target_col,
+            sensitive_col=group_col,
+            include_sensitive_in_features=include_sensitive_as_feature,
+            recommendations=recommendations,
+        )
+    except UnsupportedTargetError as e:
+        st.error(f"❌ {e}")
+        return
     except Exception:
         st.error("❌ Modeling failed.")
         st.text(traceback.format_exc())
+        return
+
+    st.markdown("### 🔍 Classification Report")
+    st.dataframe(results.report)
+
+    if results.y_prob is not None:
+        auc = roc_auc_score(results.y_test, results.y_prob)
+        st.markdown(f"📈 ROC AUC: `{auc:.2f}`")
+
+    if results.feature_importance is not None:
+        st.markdown("### 🔍 Feature Importance (Permutation)")
+        st.dataframe(results.feature_importance.head(10))
+
+    if group_col:
+        st.markdown("### ⚖️ Fairness Audit with `fairlearn`")
+        st.markdown(f"#### Sensitive Attribute: `{group_col}`")
+
+        try:
+            metric_frame, fairness_summary = compute_output_fairness(
+                y_true=results.y_test,
+                y_pred=results.y_pred,
+                sensitive_features=results.sensitive_test,
+            )
+
+            st.markdown("📊 Group-wise Metrics")
+            st.dataframe(metric_frame.by_group)
+
+            st.markdown("🧾 Summary of Fairness Disparities")
+            for key, value in fairness_summary.items():
+                if isinstance(value, (int, float)):
+                    st.markdown(f"- **{key}**: `{value:.4f}`")
+                else:
+                    reason = (
+                        value.get("reason", "undefined")
+                        if isinstance(value, dict)
+                        else value
+                    )
+                    st.markdown(f"- **{key}**: `Undefined` — {reason}")
+
+        except Exception as e:
+            st.warning(f"Could not compute fairness for `{group_col}`: {e}")

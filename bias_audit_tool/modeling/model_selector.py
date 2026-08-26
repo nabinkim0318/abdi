@@ -12,6 +12,8 @@ from sklearn.metrics import roc_curve
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
+from bias_audit_tool.modeling.target_validation import validate_classification_target
+
 
 def suggest_target_candidates(df, min_ratio=0.01, max_unique=10):
     """
@@ -77,9 +79,13 @@ def select_model(X, y):
         return RandomForestClassifier()
 
 
-def run_basic_modeling(X, y, show_plots=True):
+def run_basic_modeling(X, y, show_plots=True, test_size=0.2, random_state=42):
     """
     Run a simple modeling pipeline including training, evaluation, and visualization.
+
+    The train/test split happens before any preprocessing that learns from
+    the data (target label encoding, categorical dummy-encoding of X), so
+    the fitted encoders only ever see training rows.
 
     Args:
         X (pd.DataFrame): Feature matrix.
@@ -90,21 +96,48 @@ def run_basic_modeling(X, y, show_plots=True):
         dict: Dictionary containing the model, evaluation report,
               predictions, and optional probability scores.
     """
-    # Handle non-numeric targets
-    if y.dtype == "object" or isinstance(y.iloc[0], str):
-        le = LabelEncoder()
-        y = le.fit_transform(y)
-
-    # Dummy encoding for categorical vars
-    X = pd.get_dummies(X, drop_first=True)
-
-    # Train-test split
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
+    validate_classification_target(
+        y, target_name=getattr(y, "name", None) or "target"
     )
 
-    # Model selection & training
-    model = select_model(X, y)
+    stratify = y if y.value_counts().min() >= 2 else None
+    X_train_raw, X_test_raw, y_train, y_test = train_test_split(
+        X, y, test_size=test_size, random_state=random_state, stratify=stratify
+    )
+
+    # Handle non-numeric targets: fit the label encoder on TRAIN only.
+    if y_train.dtype == "object" or isinstance(y_train.iloc[0], str):
+        le = LabelEncoder().fit(y_train)
+        y_train = pd.Series(le.transform(y_train), index=y_train.index)
+        y_test = pd.Series(le.transform(y_test), index=y_test.index)
+
+    # Dummy encoding for categorical vars: categories come from TRAIN only;
+    # any category only seen in test is dropped, any train category missing
+    # from test is filled with 0.
+    X_train = pd.get_dummies(X_train_raw, drop_first=True)
+    X_test = pd.get_dummies(X_test_raw, drop_first=True)
+    X_test = X_test.reindex(columns=X_train.columns, fill_value=0)
+
+    return fit_and_evaluate_model(
+        X_train, y_train, X_test, y_test, show_plots=show_plots
+    )
+
+
+def fit_and_evaluate_model(X_train, y_train, X_test, y_test, show_plots=True):
+    """
+    Select a model, fit it on already-split/already-preprocessed training
+    data, and evaluate it on the held-out test data.
+
+    Args:
+        X_train, y_train: Training features/labels.
+        X_test, y_test: Held-out test features/labels.
+        show_plots (bool): Whether to display confusion matrix and ROC curve.
+
+    Returns:
+        dict: model, evaluation report, test labels/predictions, optional
+              probability scores, and permutation feature importance.
+    """
+    model = select_model(X_train, y_train)
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
     y_prob = (
@@ -113,7 +146,6 @@ def run_basic_modeling(X, y, show_plots=True):
         else None
     )
 
-    # Metrics
     report = classification_report(y_test, y_pred, output_dict=True)
     report_df = pd.DataFrame(report).transpose()
 
@@ -129,7 +161,7 @@ def run_basic_modeling(X, y, show_plots=True):
         plt.show()
 
         # ROC Curve (if binary)
-        if y_prob is not None and len(np.unique(y)) == 2:
+        if y_prob is not None and len(np.unique(y_test)) == 2:
             fpr, tpr, _ = roc_curve(y_test, y_prob)
             roc_auc = roc_auc_score(y_test, y_prob)
             fig2, ax2 = plt.subplots()

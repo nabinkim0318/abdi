@@ -229,19 +229,40 @@ def main():
 
             # Step 3c: Modeling
             if enable_modeling == "Yes" and "group_col" in st.session_state:
-                cols = df_proc.columns.tolist() if df_proc is not None else []
+                # Modeling uses the raw uploaded columns (not df_proc) so
+                # that preprocessing can be fit on the train split only.
+                raw_cols = df.columns.tolist()
                 default_index = (
-                    cols.index(st.session_state.group_col)
-                    if st.session_state.group_col in cols
+                    raw_cols.index(st.session_state.group_col)
+                    if st.session_state.group_col in raw_cols
                     else 0
                 )
                 target_col = st.selectbox(
-                    "🎯 Select target column", options=cols, index=default_index
+                    "🎯 Select target column", options=raw_cols, index=default_index
                 )
                 st.session_state.target_col = target_col
 
+                include_sensitive_as_feature = st.checkbox(
+                    "Include selected sensitive attribute as a model feature?",
+                    value=False,
+                    help=(
+                        "By default, the sensitive attribute used for "
+                        "fairness grouping is excluded from the model's "
+                        "predictive features. Excluding it does not remove "
+                        "proxy effects from other correlated features, and "
+                        "including it is not a fairness guarantee either."
+                    ),
+                )
+
                 if target_col:
-                    run_modeling_and_fairness(df_proc, target_col, demo_cols)
+                    run_modeling_and_fairness(
+                        raw_df=df,
+                        df_proc=df_proc,
+                        target_col=target_col,
+                        group_col=st.session_state.group_col,
+                        include_sensitive_as_feature=include_sensitive_as_feature,
+                        recommendations=recommendations,
+                    )
 
             st.markdown("---")
 
