@@ -95,16 +95,18 @@ no `.ipynb` files to guard.
 
 ## Git history
 
-**Current tree:** synthetic-only. The committed demo and generator do not
-redistribute patient-level clinical extracts.
+The current repository tree uses only the bundled synthetic demo.
 
-**Locally rewritten canonical-history candidate:** sanitized. Reachable
-history on local working branches no longer contains the previously
-committed clinical extracts or executed exploration notebooks.
+The canonical repository branch history was rewritten to remove previously
+committed clinical sample files and exploratory notebooks. Those historical
+artifacts are no longer reachable from branches or tags maintained in the
+canonical repository.
 
-**GitHub remote:** still contains pre-rewrite history until those refs are
-force-updated. Local sanitization does not by itself change GitHub
-branches, tags, pull-request refs, caches, forks, or clones.
+Git hosting providers, forks, clones, caches, or pull-request refs may
+retain unreachable historical objects outside the branch/tag history
+controlled by this repository. This document does not claim universal
+deletion, third-party clone erasure, guaranteed backend garbage
+collection, HIPAA compliance, or privacy certification.
 
 A private local recovery ref (`refs/backup/pre-history-sanitization`)
 intentionally retains the unsanitized history for emergency recovery and
