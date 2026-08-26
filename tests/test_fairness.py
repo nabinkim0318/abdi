@@ -1,3 +1,5 @@
+import inspect
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -175,6 +177,52 @@ def test_output_fairness_undefined_ratio_survives_display_normalization():
     assert summary["Selection Rate Difference"] == pytest.approx(1.0)
     assert summary["Selection Rate Ratio"]["status"] == "undefined"
     assert not any(isinstance(v, float) and np.isinf(v) for v in summary.values())
+
+
+def test_output_fairness_requires_zero_one_labels():
+    sensitive = np.array(["A", "A", "B", "B"])
+    y_true = np.array(["yes", "no", "yes", "no"])
+    y_pred = np.array(["yes", "yes", "no", "no"])
+
+    with pytest.raises(ValueError, match="binary 0/1 labels"):
+        compute_output_fairness(y_true, y_pred, sensitive)
+
+
+def test_output_fairness_rejects_nonzero_one_integer_labels():
+    sensitive = np.array(["A", "A", "B", "B"])
+    y_true = np.array([1, 2, 1, 2])
+    y_pred = np.array([1, 1, 2, 2])
+
+    with pytest.raises(ValueError, match="binary 0/1 labels"):
+        compute_output_fairness(y_true, y_pred, sensitive)
+
+
+def test_output_fairness_does_not_accept_custom_positive_label():
+    from bias_audit_tool.modeling.fairness import bootstrap_output_fairness
+
+    assert (
+        "positive_label" not in inspect.signature(compute_output_fairness).parameters
+    )
+    assert (
+        "positive_label"
+        not in inspect.signature(bootstrap_output_fairness).parameters
+    )
+    sensitive = np.array(["A", "A", "B", "B"])
+    y_true = np.array([1, 0, 1, 0])
+    y_pred = np.array([1, 0, 1, 0])
+    with pytest.raises(TypeError):
+        compute_output_fairness(y_true, y_pred, sensitive, positive_label="yes")
+
+
+def test_output_fairness_accepts_boolean_zero_one_labels():
+    sensitive = np.array(["A", "A", "B", "B"])
+    y_true = np.array([True, False, True, False])
+    y_pred = np.array([True, False, True, False])
+
+    _, summary = compute_output_fairness(y_true, y_pred, sensitive)
+
+    assert summary["Demographic Parity Difference"] == pytest.approx(0.0)
+    assert summary["Equalized Odds Difference"] == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------
