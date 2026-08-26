@@ -95,7 +95,17 @@ no `.ipynb` files to guard.
 
 ## Git history
 
-Removing files from the current tree does **not** erase them from Git
-history. Historical blobs may still contain previously committed clinical
-extracts and executed notebook outputs. History sanitization is a separate
-operational step and is not performed by this documentation.
+**Current tree:** synthetic-only. The committed demo and generator do not
+redistribute patient-level clinical extracts.
+
+**Locally rewritten canonical-history candidate:** sanitized. Reachable
+history on local working branches no longer contains the previously
+committed clinical extracts or executed exploration notebooks.
+
+**GitHub remote:** still contains pre-rewrite history until those refs are
+force-updated. Local sanitization does not by itself change GitHub
+branches, tags, pull-request refs, caches, forks, or clones.
+
+A private local recovery ref (`refs/backup/pre-history-sanitization`)
+intentionally retains the unsanitized history for emergency recovery and
+must never be pushed.
