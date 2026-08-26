@@ -63,7 +63,7 @@ def show_visualizations(df, audit_cols):
     # Separate demographic and non-demographic columns
     demographic_columns = []
     other_columns = []
-    
+
     for col in audit_cols:
         if col in gender_cols + race_cols + ethnicity_cols or "demographic" in col:
             demographic_columns.append(col)
@@ -73,48 +73,56 @@ def show_visualizations(df, audit_cols):
     # Create subplots for demographic columns
     if demographic_columns:
         st.markdown("#### 🔍 Demographic Distributions")
-        
+
         # Filter out columns with only NaN values
         valid_demo_cols = []
         for col in demographic_columns:
             if not df[col].dropna().empty:
                 valid_demo_cols.append(col)
-        
+
         if valid_demo_cols:
             # Calculate subplot dimensions
             n_cols = min(3, len(valid_demo_cols))  # Max 3 columns
             n_rows = (len(valid_demo_cols) + n_cols - 1) // n_cols
-            
-            fig, axes = plt.subplots(n_rows, n_cols, figsize=(5*n_cols, 4*n_rows))
+
+            fig, axes = plt.subplots(
+                n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows)
+            )
             if n_rows == 1 and n_cols == 1:
                 axes = [axes]
             elif n_rows == 1:
                 axes = axes
             else:
                 axes = axes.flatten()
-            
+
             for i, col in enumerate(valid_demo_cols):
                 ax = axes[i]
-                
+
                 print(f"[DEBUG] col: {col}")
                 print("[UNIQUE VALUES]", df[col].unique())
-                
+
                 # Handle age columns with binning (specifically age_at_index)
-                if "age_at_index" in col.lower() and pd.api.types.is_numeric_dtype(df[col]):
+                if "age_at_index" in col.lower() and pd.api.types.is_numeric_dtype(
+                    df[col]
+                ):
                     df_temp = df.copy()
                     # Create age bins
-                    df_temp[f'{col}_binned'] = pd.cut(
-                        df_temp[col], 
-                        bins=[0, 25, 50, 75, float('inf')], 
-                        labels=['<25', '25-49', '50-75', '>75'],
-                        right=False
+                    df_temp[f"{col}_binned"] = pd.cut(
+                        df_temp[col],
+                        bins=[0, 25, 50, 75, float("inf")],
+                        labels=["<25", "25-49", "50-75", ">75"],
+                        right=False,
                     )
                     # Convert to string and handle NaN values
-                    df_temp[f'{col}_binned'] = df_temp[f'{col}_binned'].astype(str)
-                    df_temp[f'{col}_binned'] = df_temp[f'{col}_binned'].replace('nan', 'Unknown')
-                    
+                    df_temp[f"{col}_binned"] = df_temp[f"{col}_binned"].astype(str)
+                    df_temp[f"{col}_binned"] = df_temp[f"{col}_binned"].replace(
+                        "nan", "Unknown"
+                    )
+
                     # Create count plot with binned data
-                    sns.countplot(data=df_temp, x=f'{col}_binned', ax=ax, palette="Set2")
+                    sns.countplot(
+                        data=df_temp, x=f"{col}_binned", ax=ax, palette="Set2"
+                    )
                     ax.set_title(f"{clean_label(col)} (Binned)", fontsize=12)
                     ax.set_xlabel("Age Groups", fontsize=10)
                     ax.set_ylabel("Count", fontsize=10)
@@ -123,23 +131,21 @@ def show_visualizations(df, audit_cols):
                     # Convert to string for consistent plotting
                     df_temp = df.copy()
                     df_temp[col] = df_temp[col].astype(str)
-                    
+
                     # Create count plot
                     sns.countplot(data=df_temp, x=col, ax=ax, palette="Set2")
                     ax.set_title(f"{clean_label(col)}", fontsize=12)
                     ax.set_xlabel(clean_label(col), fontsize=10)
                     ax.set_ylabel("Count", fontsize=10)
                     ax.tick_params(axis="x", rotation=45, labelsize=9)
-            
+
             # Hide empty subplots
             for j in range(len(valid_demo_cols), len(axes)):
                 axes[j].set_visible(False)
-            
+
             plt.tight_layout()
             st.pyplot(fig)
             plt.close(fig)
-
-
 
 
 def show_groupwise_visualizations(df, demo_cols, target_col=None):
@@ -197,18 +203,18 @@ def show_groupwise_visualizations(df, demo_cols, target_col=None):
             logging.warning(f"⚠️ Column '{col}' not in dataframe. Skipping plot.")
             continue
         valid_demo_cols.append(col)
-    
+
     if not valid_demo_cols:
         st.warning("⚠️ No valid demographic columns found.")
         return
 
     st.markdown("#### 👥 Group-wise Distributions")
-    
+
     # Calculate subplot dimensions
     n_cols = min(3, len(valid_demo_cols))  # Max 3 columns
     n_rows = (len(valid_demo_cols) + n_cols - 1) // n_cols
-    
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6*n_cols, 4*n_rows))
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6 * n_cols, 4 * n_rows))
     if n_rows == 1 and n_cols == 1:
         axes = [axes]
     elif n_rows == 1:
@@ -218,20 +224,22 @@ def show_groupwise_visualizations(df, demo_cols, target_col=None):
 
     for i, col in enumerate(valid_demo_cols):
         ax = axes[i]
-        
+
         df_plot = df.copy()
-        
+
         # Handle age columns with binning (specifically age_at_index)
         if "age_at_index" in col.lower() and pd.api.types.is_numeric_dtype(df[col]):
-            df_plot[f'{col}_binned'] = pd.cut(
-                df_plot[col], 
-                bins=[0, 25, 50, 75, float('inf')], 
-                labels=['<25', '25-49', '50-75', '>75'],
-                right=False
+            df_plot[f"{col}_binned"] = pd.cut(
+                df_plot[col],
+                bins=[0, 25, 50, 75, float("inf")],
+                labels=["<25", "25-49", "50-75", ">75"],
+                right=False,
             )
-            df_plot[f'{col}_binned'] = df_plot[f'{col}_binned'].astype(str)
-            df_plot[f'{col}_binned'] = df_plot[f'{col}_binned'].replace('nan', 'Unknown')
-            x_col = f'{col}_binned'
+            df_plot[f"{col}_binned"] = df_plot[f"{col}_binned"].astype(str)
+            df_plot[f"{col}_binned"] = df_plot[f"{col}_binned"].replace(
+                "nan", "Unknown"
+            )
+            x_col = f"{col}_binned"
             col_label = f"{clean_label(col)} (Binned)"
             x_label = "Age Groups"
         else:
@@ -295,7 +303,7 @@ def show_groupwise_visualizations(df, demo_cols, target_col=None):
     # Hide empty subplots
     for j in range(len(valid_demo_cols), len(axes)):
         axes[j].set_visible(False)
-    
+
     plt.tight_layout()
     st.pyplot(fig)
     plt.close(fig)
@@ -303,20 +311,20 @@ def show_groupwise_visualizations(df, demo_cols, target_col=None):
 
 def show_demographic_overview(df, demographic_cols):
     sns.set_theme(style="whitegrid", palette="pastel")
-    
+
     # Filter valid demographic columns
     valid_demo_cols = []
     for col in demographic_cols:
         if col in df.columns and not df[col].dropna().empty:
             valid_demo_cols.append(col)
-    
+
     if not valid_demo_cols:
         st.warning("⚠️ No valid demographic columns found for overview.")
         return
-    
+
     num_cols = len(valid_demo_cols)
     fig, axs = plt.subplots(nrows=num_cols, ncols=2, figsize=(12, 4 * num_cols))
-    
+
     # Handle single row case
     if num_cols == 1:
         axs = axs.reshape(1, -1)
