@@ -37,9 +37,7 @@ def test_same_bytes_do_not_reset_dataset_state():
     payload = b"a,b\n1,2\n"
     digest = fingerprint_upload(io.BytesIO(payload))
     session["upload_fingerprint"] = digest
-    reset = apply_upload_identity(
-        session, filename="A.csv", fingerprint=digest
-    )
+    reset = apply_upload_identity(session, filename="A.csv", fingerprint=digest)
     assert reset is False
     assert session["df"] is not None
     assert session["preprocessing_applied"] is True
@@ -55,9 +53,7 @@ def test_same_filename_changed_bytes_resets_dataset_state():
     assert old != new
     session["upload_fingerprint"] = old
     session["uploaded_file_name"] = "A.csv"
-    reset = apply_upload_identity(
-        session, filename="A.csv", fingerprint=new
-    )
+    reset = apply_upload_identity(session, filename="A.csv", fingerprint=new)
     assert reset is True
     assert session["df"] is None
     assert session["df_proc"] is None
@@ -81,9 +77,7 @@ def test_different_filename_same_bytes_preserves_analytical_identity():
     digest = fingerprint_upload(io.BytesIO(payload))
     session["upload_fingerprint"] = digest
     session["uploaded_file_name"] = "A.csv"
-    reset = apply_upload_identity(
-        session, filename="B.csv", fingerprint=digest
-    )
+    reset = apply_upload_identity(session, filename="B.csv", fingerprint=digest)
     assert reset is False
     assert session["df"] is not None
     assert session["target_col"] == "y"
