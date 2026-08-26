@@ -36,6 +36,20 @@ def _heuristic_frame():
     )
 
 
+def test_demo_group_name_is_a_heuristic_candidate():
+    n = 10
+    df = pd.DataFrame(
+        {
+            "demo_group": ["Group A"] * n + ["Group B"] * n,
+            "score": list(range(n * 2)),
+        }
+    )
+    names = identify_by_hierarchy(df)
+    _, candidates = recommend_demographic_columns(df)
+    assert "demo_group" in names
+    assert "demo_group" in candidates
+
+
 def test_identify_demographic_columns():
     df = pd.DataFrame(columns=["gender", "age", "zipcode", "score", "likes_cats"])
     result = identify_by_hierarchy(df)

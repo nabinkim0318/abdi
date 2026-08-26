@@ -57,7 +57,14 @@ logs/
 # Reports / Outputs
 *.pdf
 *.html
-*.csv
 output/
-sample_data/*.csv
-bias_audit_tool/sample_data/clinical_dataset_breast_cancer.csv
+
+# Local raw or external datasets must not be committed. The only bundled
+# sample CSV is the synthetic demo (see DATA_PROVENANCE.md).
+data/raw/
+sample_data/raw/
+bias_audit_tool/sample_data/raw/
+bias_audit_tool/sample_data/*.xlsx
+bias_audit_tool/sample_data/*.xls
+*.csv
+!bias_audit_tool/sample_data/demo.csv

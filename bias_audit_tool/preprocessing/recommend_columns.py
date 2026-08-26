@@ -26,6 +26,7 @@ DEMOGRAPHIC_CATEGORIES = [
     "marital",
     "children",
     "family",
+    "demo_group",
 ]
 
 SENSITIVE_ATTRIBUTE_CANDIDATE_CAPTION = (
@@ -48,6 +49,7 @@ DIRECT_ENCODING_PREFIXES = (
     "sex",
     "race",
     "ethnicity",
+    "demo_group",
 )
 
 logging.basicConfig(
@@ -62,7 +64,8 @@ def identify_by_hierarchy(df: pd.DataFrame) -> list[str]:
 
     A column is a name-level candidate if it starts with ``demographics.``
     or if any token in ``DEMOGRAPHIC_CATEGORIES`` is a case-insensitive
-    substring of the column name.
+    substring of the column name. ``demo_group`` is included so the
+    bundled synthetic demo's grouping column is a name-level candidate.
 
     This is not protected-class detection. Known limitations, documented
     by tests:

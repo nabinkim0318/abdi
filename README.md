@@ -2,6 +2,8 @@
 
 Exploratory bias and fairness diagnostics for tabular datasets using Fairlearn and scikit-learn. The Streamlit app helps researchers inspect representation and group-wise performance disparities. It does not establish that a dataset or model is fair, unbiased, non-discriminatory, or legally compliant.
 
+The bundled demo dataset is fully synthetic. See [DATA_PROVENANCE.md](DATA_PROVENANCE.md). User-uploaded datasets are supplied by the user and may contain sensitive information. The bundled repository demo itself is synthetic.
+
 ---
 
 ## 🚀 Features
@@ -53,6 +55,19 @@ make setup
 make run
 ```
 
+## Demo walkthrough (synthetic CSV)
+
+Use the committed synthetic demo, not any external clinical extract.
+
+1. Start the app (`make run` or `streamlit run app.py`).
+2. Upload `bias_audit_tool/sample_data/demo.csv`.
+3. Apply the suggested preprocessing, then choose **`demo_group_mapped`** as the sensitive attribute. Exploratory one-hot encoding plus the existing dummy-merge heuristic reconstructs `demo_group` as `demo_group_mapped`. `age_band_*` dummy columns may also appear as candidates because the name contains `age` — use `demo_group_mapped` for this walkthrough.
+4. For representation analysis, paste the synthetic demonstration benchmark from `bias_audit_tool/sample_data/demo_benchmark.json` (proportions that sum to 1.0). This is a software fixture, not a population prevalence.
+5. Enable modeling and select **`outcome`** as the binary target.
+6. Run model evaluation. Inspect the classification report, ROC-AUC, Confusion Matrix, ROC Curve, permutation importance, group-wise fairness diagnostics, DP Difference, and EO Difference.
+
+Do not interpret demo group differences as real-world demographic findings.
+
 📁 Project Structure
 ```bash
 app.py                             # Streamlit entry point
@@ -70,7 +85,8 @@ bias_audit_tool/
 │   ├── summary.py                 # Preprocessing recommendation summary table
 │   └── transform.py               # Exploratory (full-data) preprocessing
 ├── sample_data/
-│   └── clinical_dataset_breast_cancer.csv
+│   ├── demo.csv                   # Synthetic portfolio demo (see DATA_PROVENANCE.md)
+│   └── demo_benchmark.json        # Synthetic demonstration benchmark
 ├── utils/
 │   └── ui_helpers.py              # Streamlit helpers for preprocessing and modeling
 ├── visualization/
@@ -85,11 +101,16 @@ tests/
 ├── test_preprocess.py
 ├── test_product_surface.py
 ├── test_recommend_columns.py
+├── test_synthetic_demo.py
 ├── test_target_validation.py
+
+scripts/
+└── generate_demo_data.py          # Deterministic synthetic demo generator (seed 42)
 
 Makefile                           # Common tasks: run, lint, test
 pyproject.toml                     # Project dependencies and build settings
 requirements.txt                   # Plain dependency list (optional)
 README.md                          # This file
+DATA_PROVENANCE.md                 # Synthetic demo provenance and data dictionary
 LICENSE                            # MIT License
 ```

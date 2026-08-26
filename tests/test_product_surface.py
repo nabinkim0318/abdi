@@ -44,6 +44,8 @@ def test_readme_does_not_advertise_removed_product_claims():
     assert "confusion matrix" in readme
     assert "roc curve" in readme
     assert "does not remove proxy variables" in readme
+    assert "synthetic" in readme
+    assert "clinical_dataset_breast_cancer" not in readme
 
 
 def test_live_app_does_not_show_unwired_encoding_checkbox():
