@@ -6,7 +6,10 @@ import streamlit as st
 
 from bias_audit_tool.data.data_loader import load_and_preview_data
 from bias_audit_tool.data.upload_state import apply_upload_identity
+from bias_audit_tool.data.upload_state import begin_new_upload
+from bias_audit_tool.data.upload_state import clear_dataset_if_upload_removed
 from bias_audit_tool.data.upload_state import reset_dataset_state
+from bias_audit_tool.data.upload_state import uploader_widget_key
 from bias_audit_tool.data.validation import blocking_issues
 from bias_audit_tool.data.validation import CODE_NON_FINITE_VALUES
 from bias_audit_tool.data.validation import fingerprint_upload
@@ -56,7 +59,11 @@ def _render_validation_issues(issues):
 def main():
 
     enable_modeling = st.sidebar.radio("🤖 Run ML Model?", ["No", "Yes"])
-    uploaded_file = st.file_uploader("📤 Upload CSV", type=["csv"])
+    uploaded_file = st.file_uploader(
+        "📤 Upload CSV",
+        type=["csv"],
+        key=uploader_widget_key(st.session_state),
+    )
 
     # 📌 Initialize session state
     if "target_col" not in st.session_state:
@@ -77,7 +84,9 @@ def main():
         st.session_state.audit_run_id = uuid.uuid4()
 
     infinity_blocked = False
-    if uploaded_file is not None:
+    if uploaded_file is None:
+        clear_dataset_if_upload_removed(st.session_state, uploaded_file)
+    else:
         fingerprint = fingerprint_upload(uploaded_file)
         dataset_changed = apply_upload_identity(
             st.session_state,
@@ -309,7 +318,7 @@ def main():
             st.markdown("---")
 
             if st.button("🔁 Try with another dataset?"):
-                reset_dataset_state(st.session_state, clear_identity=True)
+                begin_new_upload(st.session_state)
                 st.rerun()
 
     else:

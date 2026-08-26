@@ -44,6 +44,9 @@ DATASET_STATE_DEFAULTS = {
     "trigger_audit": False,
 }
 
+UPLOADER_SESSION_KEY = "csv_uploader_key"
+DEFAULT_UPLOADER_WIDGET_KEY = "csv_uploader"
+
 
 def reset_dataset_state(
     session_state: MutableMapping,
@@ -89,3 +92,42 @@ def apply_upload_identity(
         return True
     session_state["uploaded_file_name"] = filename
     return False
+
+
+def uploader_widget_key(session_state: MutableMapping) -> str:
+    """Stable Streamlit file_uploader key until a new-upload reset."""
+    key = session_state.get(UPLOADER_SESSION_KEY)
+    if not key:
+        session_state[UPLOADER_SESSION_KEY] = DEFAULT_UPLOADER_WIDGET_KEY
+    return session_state[UPLOADER_SESSION_KEY]
+
+
+def clear_dataset_if_upload_removed(
+    session_state: MutableMapping,
+    uploaded_file,
+) -> bool:
+    """Clear analysis state when the uploader is emptied after a prior upload.
+
+    Ordinary reruns with no upload identity are left alone. A previous
+    ``upload_fingerprint`` plus a now-empty widget is treated as a removed
+    dataset, not as a reason to keep analyzing the last DataFrame.
+    """
+    if uploaded_file is not None:
+        return False
+    if session_state.get("upload_fingerprint") is None:
+        return False
+    reset_dataset_state(session_state, clear_identity=True)
+    return True
+
+
+def begin_new_upload(session_state: MutableMapping) -> str:
+    """Drop dataset state and rotate the file_uploader widget key.
+
+    Rotating the key prevents Streamlit from immediately reusing the
+    previous uploaded bytes after “Try with another dataset?”.
+    """
+    reset_dataset_state(session_state, clear_identity=True)
+    session_state[UPLOADER_SESSION_KEY] = (
+        f"{DEFAULT_UPLOADER_WIDGET_KEY}_{uuid.uuid4().hex}"
+    )
+    return session_state[UPLOADER_SESSION_KEY]

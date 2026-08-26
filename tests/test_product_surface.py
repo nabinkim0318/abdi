@@ -72,7 +72,9 @@ def test_live_app_defaults_target_with_binary_preference_helper():
     assert "raw_cols.index(st.session_state.group_col)" not in app_source
     assert "fingerprint_upload" in app_source
     assert "apply_upload_identity" in app_source
-    assert "reset_dataset_state" in app_source
+    assert "clear_dataset_if_upload_removed" in app_source
+    assert "begin_new_upload" in app_source
+    assert "uploader_widget_key" in app_source
     assert "uploaded_file.name !=" not in app_source
 
 

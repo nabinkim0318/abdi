@@ -35,9 +35,9 @@ CODE_SMALL_DATASET_WARNING = "small_dataset_warning"
 CODE_INSUFFICIENT_CLASS_SUPPORT = "insufficient_class_support"
 CODE_EXTREME_CLASS_IMBALANCE = "extreme_class_imbalance"
 
-# Hard floor: with test_size=0.2, n=19 yields a held-out set of ~3 rows,
-# which cannot support useful stratified binary evaluation. n=20 is the
-# smallest size this app will attempt. It is not a validity certificate.
+# Explicit application floor for this held-out workflow. Below this size the
+# evaluation set is too small for the intended diagnostic use. It is not a
+# statistical-validity threshold.
 MIN_MODELING_ROWS = 20
 
 # Heuristic stability warning only. Below 100 rows the ~20-row test split
