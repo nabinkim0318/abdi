@@ -28,9 +28,7 @@ def _by_group(support_df):
 
 def _codes(warnings, group=None):
     return [
-        item["code"]
-        for item in warnings
-        if group is None or item["group"] == group
+        item["code"] for item in warnings if group is None or item["group"] == group
     ]
 
 
@@ -72,7 +70,9 @@ def test_three_or_more_groups_all_appear_with_correct_counts():
     assert by_group.loc["B", SUPPORT_COL_PREDICTED_POSITIVES] == 0
     assert by_group.loc["C", SUPPORT_COL_PREDICTED_POSITIVES] == 1
     assert by_group.loc["C", SUPPORT_COL_POSITIVE_LABELS] == 0
-    assert (support[SUPPORT_COL_SELECTION_DENOMINATOR] == support[SUPPORT_COL_N]).all()
+    assert (
+        support[SUPPORT_COL_SELECTION_DENOMINATOR] == support[SUPPORT_COL_N]
+    ).all()
 
 
 def test_string_group_labels_are_preserved():
@@ -125,9 +125,10 @@ def test_sparse_group_emits_small_group_warning_code():
     assert small["n"] == 2
     assert small["threshold"] == MIN_GROUP_N_WARNING
     assert "heuristic" in small["message"].lower()
-    assert "valid" not in small["message"].lower() or "not a validity" in small[
-        "message"
-    ].lower()
+    assert (
+        "valid" not in small["message"].lower()
+        or "not a validity" in small["message"].lower()
+    )
 
 
 def test_zero_positive_labels_emits_explicit_eo_support_warning():
@@ -165,9 +166,7 @@ def test_predictions_all_zero_have_zero_predicted_positives():
 
     support = compute_group_support(y_true, y_pred, sensitive)
     assert (support[SUPPORT_COL_PREDICTED_POSITIVES] == 0).all()
-    assert (
-        support[SUPPORT_COL_PREDICTED_NEGATIVES] == support[SUPPORT_COL_N]
-    ).all()
+    assert (support[SUPPORT_COL_PREDICTED_NEGATIVES] == support[SUPPORT_COL_N]).all()
 
 
 def test_predictions_all_one_have_predicted_positives_equal_group_n():
@@ -176,9 +175,7 @@ def test_predictions_all_one_have_predicted_positives_equal_group_n():
     y_pred = np.array([1, 1, 1, 1, 1, 1])
 
     support = compute_group_support(y_true, y_pred, sensitive)
-    assert (
-        support[SUPPORT_COL_PREDICTED_POSITIVES] == support[SUPPORT_COL_N]
-    ).all()
+    assert (support[SUPPORT_COL_PREDICTED_POSITIVES] == support[SUPPORT_COL_N]).all()
     assert (support[SUPPORT_COL_PREDICTED_NEGATIVES] == 0).all()
 
 
