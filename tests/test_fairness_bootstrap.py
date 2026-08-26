@@ -285,14 +285,10 @@ def test_bootstrap_output_fairness_estimates_match_compute_output_fairness():
     eo = bundled["Equalized Odds Difference"]
     assert dp["status"] == "ok"
     assert eo["status"] == "ok"
-    assert dp["estimate"] == pytest.approx(
-        summary["Demographic Parity Difference"]
-    )
+    assert dp["estimate"] == pytest.approx(summary["Demographic Parity Difference"])
     assert eo["estimate"] == pytest.approx(summary["Equalized Odds Difference"])
     assert dp["estimate"] == pytest.approx(
-        demographic_parity_difference(
-            y_true, y_pred, sensitive_features=sensitive
-        )
+        demographic_parity_difference(y_true, y_pred, sensitive_features=sensitive)
     )
     assert eo["estimate"] == pytest.approx(
         equalized_odds_difference(y_true, y_pred, sensitive_features=sensitive)
