@@ -10,7 +10,7 @@ Exploratory bias and fairness diagnostics for tabular datasets using Fairlearn a
 - Candidate sensitive attributes based on column-name and metadata heuristics — review before use
 - User-supplied expected-distribution (benchmark) representation analysis
 - Binary-classification modeling with train-only-fitted preprocessing
-- Optional inclusion or exclusion of the selected sensitive attribute as a model feature
+- Optional inclusion or exclusion of the selected sensitive attribute, including its direct encodings, as a model feature
 - Held-out classification metrics, ROC AUC, a confusion matrix, an ROC curve, and permutation feature importance
 - Group-wise fairness diagnostics, including Demographic Parity Difference and Equalized Odds Difference
 - Count-plot visualizations for selected grouping columns and observed-vs-expected distribution charts
@@ -21,7 +21,7 @@ Exploratory bias and fairness diagnostics for tabular datasets using Fairlearn a
 - Supervised modeling is binary classification only
 - One selected sensitive attribute is audited at a time
 - Sensitive-attribute recommendations are heuristic and require human review
-- Excluding the selected attribute from model inputs does not remove proxy variables
+- Excluding the selected attribute removes its direct encodings, but does not remove proxy variables
 - Benchmark-relative representation analysis requires a user-supplied expected distribution
 
 ---

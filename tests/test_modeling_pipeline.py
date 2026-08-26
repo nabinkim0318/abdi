@@ -147,6 +147,92 @@ def test_excluded_sensitive_column_does_not_enter_feature_matrix():
     assert not any("gender" in col for col in result.X_test.columns)
 
 
+def _onehot_race_frame(n=120, seed=3):
+    rng = np.random.default_rng(seed)
+    race = rng.choice(["Black", "White", "Asian"], n)
+    return pd.DataFrame(
+        {
+            "age": rng.integers(18, 90, n).astype(float),
+            "race_Black": (race == "Black").astype(int),
+            "race_White": (race == "White").astype(int),
+            "race_Asian": (race == "Asian").astype(int),
+            "zipcode": rng.integers(10000, 99999, n),
+            "income": rng.integers(20, 120, n).astype(float),
+            "outcome": pd.Series(rng.choice([0, 1], n), dtype="int64"),
+        }
+    )
+
+
+def test_exclude_drops_direct_onehot_source_columns_of_mapped_race():
+    raw_df = _onehot_race_frame()
+    df_proc = raw_df.copy()
+    df_proc["race_mapped"] = np.select(
+        [raw_df["race_Black"] == 1, raw_df["race_White"] == 1],
+        ["Black", "White"],
+        default="Asian",
+    )
+    recommendations = {
+        "age": "MinMaxScaler",
+        "zipcode": "MinMaxScaler",
+        "income": "MinMaxScaler",
+    }
+
+    result = run_modeling_pipeline(
+        raw_df=raw_df,
+        df_proc=df_proc,
+        target_col="outcome",
+        sensitive_col="race_mapped",
+        include_sensitive_in_features=False,
+        recommendations=recommendations,
+    )
+
+    feature_names = list(result.X_train.columns)
+    assert not any("race_Black" in col for col in feature_names)
+    assert not any("race_White" in col for col in feature_names)
+    assert not any("race_Asian" in col for col in feature_names)
+    assert not any("race_mapped" in col for col in feature_names)
+    assert any("zipcode" in col for col in feature_names)
+    assert any("income" in col for col in feature_names)
+    expected = df_proc.loc[result.y_test.index, "race_mapped"]
+    pd.testing.assert_series_equal(
+        result.sensitive_test.sort_index(), expected.sort_index(), check_names=False
+    )
+
+
+def test_include_keeps_direct_onehot_source_columns_of_mapped_race():
+    raw_df = _onehot_race_frame()
+    df_proc = raw_df.copy()
+    df_proc["race_mapped"] = np.select(
+        [raw_df["race_Black"] == 1, raw_df["race_White"] == 1],
+        ["Black", "White"],
+        default="Asian",
+    )
+    recommendations = {
+        "age": "MinMaxScaler",
+        "zipcode": "MinMaxScaler",
+        "income": "MinMaxScaler",
+    }
+
+    result = run_modeling_pipeline(
+        raw_df=raw_df,
+        df_proc=df_proc,
+        target_col="outcome",
+        sensitive_col="race_mapped",
+        include_sensitive_in_features=True,
+        recommendations=recommendations,
+    )
+
+    feature_names = list(result.X_train.columns)
+    assert any("race_Black" in col for col in feature_names)
+    assert any("race_White" in col for col in feature_names)
+    assert any("race_Asian" in col for col in feature_names)
+    assert any("zipcode" in col for col in feature_names)
+    expected = df_proc.loc[result.y_test.index, "race_mapped"]
+    pd.testing.assert_series_equal(
+        result.sensitive_test.sort_index(), expected.sort_index(), check_names=False
+    )
+
+
 def test_included_sensitive_column_enters_feature_matrix():
     df = _demo_frame()
     recommendations = {"age": "MinMaxScaler", "gender": "OneHotEncoder"}
@@ -234,12 +320,46 @@ def test_sensitive_column_merged_only_in_df_proc_is_sourced_correctly():
     pd.testing.assert_series_equal(
         result.sensitive_test.sort_index(), expected.sort_index(), check_names=False
     )
-    # The excluded column itself ("demographic.gender_mapped") must not
-    # appear as a feature. Note: this does not retroactively strip raw
-    # constituent dummy columns ("demographic.gender_male"/"_female") if
-    # they still exist as separate columns in the raw upload -- tracking
-    # that provenance is out of scope here (see PR notes).
-    assert not any("gender_mapped" in col for col in result.X_train.columns)
+    # The excluded logical attribute includes the mapped grouping column
+    # and its direct one-hot source columns in the raw upload.
+    feature_names = list(result.X_train.columns) + list(result.X_test.columns)
+    assert not any("gender_mapped" in col for col in feature_names)
+    assert not any("gender_male" in col for col in feature_names)
+    assert not any("gender_female" in col for col in feature_names)
+
+
+def test_include_keeps_direct_source_columns_of_mapped_demographic_gender():
+    rng = np.random.default_rng(6)
+    n = 200
+    raw_df = pd.DataFrame(
+        {
+            "age": rng.integers(18, 90, n).astype(float),
+            "demographic.gender_male": rng.integers(0, 2, n),
+            "outcome": pd.Series(rng.choice(["yes", "no"], n), dtype="object"),
+        }
+    )
+    raw_df["demographic.gender_female"] = 1 - raw_df["demographic.gender_male"]
+    df_proc = raw_df.copy()
+    df_proc["demographic.gender_mapped"] = df_proc["demographic.gender_male"].map(
+        {1: "male", 0: "female"}
+    )
+
+    result = run_modeling_pipeline(
+        raw_df=raw_df,
+        df_proc=df_proc,
+        target_col="outcome",
+        sensitive_col="demographic.gender_mapped",
+        include_sensitive_in_features=True,
+        recommendations={"age": "MinMaxScaler"},
+    )
+
+    feature_names = list(result.X_train.columns)
+    assert any("gender_male" in col for col in feature_names)
+    assert any("gender_female" in col for col in feature_names)
+    expected = df_proc.loc[result.y_test.index, "demographic.gender_mapped"]
+    pd.testing.assert_series_equal(
+        result.sensitive_test.sort_index(), expected.sort_index(), check_names=False
+    )
 
 
 # ---------------------------------------------------------------------------

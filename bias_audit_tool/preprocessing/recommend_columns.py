@@ -33,6 +33,23 @@ SENSITIVE_ATTRIBUTE_CANDIDATE_CAPTION = (
     "heuristics — review before use."
 )
 
+# Prefixes whose `{prefix}_*` columns are treated as *direct encodings* of
+# the same logical sensitive attribute (one-hot dummies, mapped labels).
+# Unrelated correlated variables (zip code, income, etc.) are not listed.
+DIRECT_ENCODING_PREFIXES = (
+    "demographic.gender",
+    "demographic.race",
+    "demographic.ethnicity",
+    "demographic.age",
+    "demographics.gender",
+    "demographics.race",
+    "demographics.ethnicity",
+    "gender",
+    "sex",
+    "race",
+    "ethnicity",
+)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -127,6 +144,49 @@ def merge_dummy_columns_and_get_mapping(
     return df_new, mapping
 
 
+def encoding_prefixes_for_sensitive_column(sensitive_col: str) -> tuple[str, ...]:
+    """Return dummy/source prefixes that encode the same logical attribute."""
+    prefixes: list[str] = []
+    if sensitive_col.endswith("_mapped"):
+        prefixes.append(sensitive_col[: -len("_mapped")])
+    for prefix in DIRECT_ENCODING_PREFIXES:
+        if (
+            sensitive_col == prefix
+            or sensitive_col == f"{prefix}_mapped"
+            or sensitive_col.startswith(prefix + "_")
+        ):
+            prefixes.append(prefix)
+    unique: list[str] = []
+    for prefix in prefixes:
+        if prefix not in unique:
+            unique.append(prefix)
+    unique.sort(key=len, reverse=True)
+    return tuple(unique)
+
+
+def direct_columns_for_sensitive_attribute(sensitive_col: str, columns) -> list[str]:
+    """
+    Columns that *are* the selected sensitive attribute or a direct
+    encoding of it (mapped label or one-hot source columns).
+
+    Does not include unrelated proxy variables.
+    """
+    columns = list(columns)
+    related = set()
+    if sensitive_col in columns:
+        related.add(sensitive_col)
+    for prefix in encoding_prefixes_for_sensitive_column(sensitive_col):
+        if prefix in columns:
+            related.add(prefix)
+        mapped = f"{prefix}_mapped"
+        if mapped in columns:
+            related.add(mapped)
+        for col in columns:
+            if col.startswith(prefix + "_"):
+                related.add(col)
+    return [col for col in columns if col in related]
+
+
 def is_categorical_column(series: pd.Series) -> bool:
     """Check if a series is suitable as a categorical group variable."""
     dtype = series.dtype
@@ -160,12 +220,7 @@ def recommend_demographic_columns(
     """
     df, mapping = merge_dummy_columns_and_get_mapping(
         df,
-        prefix_keywords=[
-            "demographic.gender",
-            "demographic.race",
-            "demographic.ethnicity",
-            "demographic.age",
-        ],
+        prefix_keywords=list(DIRECT_ENCODING_PREFIXES),
         drop=True,
     )
 

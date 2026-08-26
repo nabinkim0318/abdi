@@ -3,6 +3,9 @@ from pathlib import Path
 import pandas as pd
 
 from bias_audit_tool.preprocessing import recommend_columns as rec_mod
+from bias_audit_tool.preprocessing.recommend_columns import (
+    direct_columns_for_sensitive_attribute,
+)
 from bias_audit_tool.preprocessing.recommend_columns import identify_by_hierarchy
 from bias_audit_tool.preprocessing.recommend_columns import (
     recommend_demographic_columns,
@@ -94,3 +97,39 @@ def test_readme_does_not_claim_automatic_detection_or_fairness_verdicts():
     assert "exploratory bias and fairness diagnostics" in lowered
     assert "shap" not in lowered
     assert "automated reports" not in lowered
+
+
+def test_direct_columns_for_mapped_race_exclude_proxies():
+    columns = [
+        "age",
+        "race_Black",
+        "race_White",
+        "race_Asian",
+        "zipcode",
+        "income",
+        "education",
+        "race_mapped",
+    ]
+    related = direct_columns_for_sensitive_attribute("race_mapped", columns)
+    assert related == [
+        "race_Black",
+        "race_White",
+        "race_Asian",
+        "race_mapped",
+    ]
+
+
+def test_recommend_demographic_columns_merges_bare_race_onehot_dummies():
+    n = 10
+    df = pd.DataFrame(
+        {
+            "race_Black": [1, 0] * n,
+            "race_White": [0, 1] * n,
+            "score": list(range(n * 2)),
+        }
+    )
+    merged, candidates = recommend_demographic_columns(df)
+    assert "race_mapped" in merged.columns
+    assert "race_Black" not in merged.columns
+    assert "race_White" not in merged.columns
+    assert "race_mapped" in candidates

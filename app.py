@@ -13,7 +13,6 @@ from bias_audit_tool.preprocessing.recommend_columns import (
 )
 from bias_audit_tool.utils.ui_helpers import apply_preprocessing_and_display
 from bias_audit_tool.utils.ui_helpers import display_preprocessing_recommendations
-from bias_audit_tool.utils.ui_helpers import get_user_preprocessing_options
 from bias_audit_tool.utils.ui_helpers import run_modeling_and_fairness
 from bias_audit_tool.visualization.ui_blocks import audit_and_visualize_fairness
 from bias_audit_tool.visualization.ui_blocks import download_processed_csv
@@ -81,21 +80,25 @@ def main():
         df = st.session_state.df
         recommendations = st.session_state.recommendations
         show_logs = st.checkbox("🪵 Show detailed preprocessing logs", value=False)
-        options = get_user_preprocessing_options()
 
-        # 👉 Step 2: Apply Preprocessing
-        if button_clicked("preprocessing_button"):
-            df_proc = apply_preprocessing_and_display(
-                df, recommendations, show_logs, options
-            )
+        # Apply once on click. Re-running exploratory preprocessing on every
+        # rerun would overwrite merged grouping columns such as race_mapped.
+        if st.button(
+            "🚀 Apply Recommended Preprocessing", key="preprocessing_button"
+        ):
+            df_proc = apply_preprocessing_and_display(df, recommendations, show_logs)
             st.session_state.df_proc = df_proc
             st.session_state.preprocessing_applied = True
             st.session_state.step3_ready = True
             st.session_state.trigger_audit = True
-
+            st.session_state.pop("demo_cols", None)
             st.success("✅ Preprocessing applied!")
-            # Download CSV
-            download_processed_csv(df_proc)
+
+        if (
+            st.session_state.get("preprocessing_applied")
+            and st.session_state.get("df_proc") is not None
+        ):
+            download_processed_csv(st.session_state.df_proc)
 
         # 👉 Step 3: Post-Preprocessing Analysis
         if st.session_state.get("step3_ready") and "df_proc" in st.session_state:
@@ -229,11 +232,12 @@ def main():
                     "Include selected sensitive attribute as a model feature?",
                     value=False,
                     help=(
-                        "By default, the sensitive attribute used for "
-                        "fairness grouping is excluded from the model's "
-                        "predictive features. Excluding it does not remove "
-                        "proxy effects from other correlated features, and "
-                        "including it is not a fairness guarantee either."
+                        "By default, the selected sensitive attribute and its "
+                        "direct encodings (for example one-hot race_* columns) "
+                        "are excluded from the model's predictive features. "
+                        "Unrelated correlated variables (proxies) are not "
+                        "removed automatically. Including the attribute is "
+                        "not a fairness guarantee."
                     ),
                 )
 
@@ -269,12 +273,6 @@ def initialize_session():
     for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
-
-
-def button_clicked(key):
-    if st.button("🚀 Apply Recommended Preprocessing", key=key):
-        st.session_state[key + "_clicked"] = True
-    return st.session_state.get(key + "_clicked", False)
 
 
 if __name__ == "__main__":

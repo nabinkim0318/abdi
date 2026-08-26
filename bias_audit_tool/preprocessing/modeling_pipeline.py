@@ -43,6 +43,9 @@ from sklearn.preprocessing import OrdinalEncoder
 from bias_audit_tool.modeling.model_selector import fit_and_evaluate_model
 from bias_audit_tool.modeling.target_validation import validate_classification_target
 from bias_audit_tool.preprocessing.preprocess import recommend_preprocessing
+from bias_audit_tool.preprocessing.recommend_columns import (
+    direct_columns_for_sensitive_attribute,
+)
 
 
 def _safe_log1p(values):
@@ -286,9 +289,14 @@ def run_modeling_pipeline(
 
         if include_sensitive_in_features:
             X_raw = X_raw.copy()
-            X_raw[sensitive_col] = sensitive_series.reindex(X_raw.index)
-        elif sensitive_col in X_raw.columns:
-            X_raw = X_raw.drop(columns=[sensitive_col])
+            if sensitive_col not in X_raw.columns:
+                X_raw[sensitive_col] = sensitive_series.reindex(X_raw.index)
+        else:
+            drop_cols = direct_columns_for_sensitive_attribute(
+                sensitive_col, X_raw.columns
+            )
+            if drop_cols:
+                X_raw = X_raw.drop(columns=drop_cols)
 
     X_train_raw, X_test_raw, y_train, y_test, sens_train, sens_test = (
         split_modeling_frame(

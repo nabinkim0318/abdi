@@ -61,62 +61,6 @@ def display_preprocessing_recommendations(df):
     return recommendations
 
 
-def get_user_preprocessing_options():
-    """
-    Render checkboxes for user-selected preprocessing options in Streamlit.
-
-    Returns:
-        tuple: Boolean flags for (enable_scaling,
-               enable_encoding, handle_missing).
-    """
-    st.markdown("### ⚙️ Preprocessing Options")
-
-    enable_scaling = st.checkbox(
-        "🔧 Apply Scaling to numeric columns (MinMaxScaler)",
-        value=True,
-        help=(
-            "Rescales numeric features between 0 and 1. "
-            "Recommended for ML modeling."
-        ),
-    )
-
-    enable_encoding = st.checkbox(
-        "🔧 Encode categorical columns",
-        value=True,
-        help=(
-            "Converts text columns into numeric format "
-            "(e.g., OneHot or Label encoding)."
-        ),
-    )
-
-    handle_missing = st.checkbox(
-        "🧩 Handle missing values automatically",
-        value=True,
-        help=(
-            "Impute missing numeric values with mean, categorical with mode. "
-            "Drop columns with >95% missing."
-        ),
-    )
-
-    return enable_scaling, enable_encoding, handle_missing
-
-
-def show_selected_options(enable_scaling, enable_encoding, handle_missing):
-    """
-    Display the currently selected preprocessing options as a summary caption.
-
-    Args:
-        enable_scaling (bool): Whether to apply scaling.
-        enable_encoding (bool): Whether to apply encoding.
-        handle_missing (bool): Whether to handle missing values.
-    """
-    st.caption(
-        f"🔧 Applied options: Scaling = {enable_scaling}, "
-        f"Encoding = {enable_encoding}, "
-        f"Missing Handling = {handle_missing}"
-    )
-
-
 def execute_preprocessing(df, recommendations, show_logs=False):
     """
     Apply preprocessing pipeline and display results.
@@ -136,22 +80,13 @@ def execute_preprocessing(df, recommendations, show_logs=False):
     return df_proc
 
 
-def apply_preprocessing_and_display(df, recommendations, show_logs, options):
+def apply_preprocessing_and_display(df, recommendations, show_logs):
     """
-    Wrapper function that applies preprocessing with user-selected options.
+    Apply exploratory preprocessing and show a preview.
 
-    Args:
-        df (pd.DataFrame): Original input DataFrame.
-        recommendations (dict): Preprocessing actions per column.
-        show_logs (bool): Whether to display log messages.
-        options (tuple): Tuple of booleans (enable_scaling,
-        enable_encoding, handle_missing).
-
-    Returns:
-        pd.DataFrame: Transformed DataFrame after preprocessing.
+    Modeling-path scaling/encoding is fit later on the train split only
+    and is not controlled by this exploratory step.
     """
-    enable_scaling, enable_encoding, handle_missing = options
-    show_selected_options(enable_scaling, enable_encoding, handle_missing)
     df_proc = execute_preprocessing(df, recommendations, show_logs)
     return df_proc
 

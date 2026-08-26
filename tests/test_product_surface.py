@@ -43,6 +43,18 @@ def test_readme_does_not_advertise_removed_product_claims():
     assert "test_failure.py" not in readme
     assert "confusion matrix" in readme
     assert "roc curve" in readme
+    assert "does not remove proxy variables" in readme
+
+
+def test_live_app_does_not_show_unwired_encoding_checkbox():
+    app_source = (ROOT / "app.py").read_text(encoding="utf-8")
+    helpers = (ROOT / "bias_audit_tool" / "utils" / "ui_helpers.py").read_text(
+        encoding="utf-8"
+    )
+    combined = "\n".join([app_source, helpers])
+    assert "get_user_preprocessing_options" not in combined
+    assert "Encode categorical columns" not in combined
+    assert "Apply Scaling to numeric columns" not in combined
 
 
 def test_plot_distribution_comparison_uses_stable_group_column():
