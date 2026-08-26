@@ -41,6 +41,8 @@ def test_readme_does_not_advertise_removed_product_claims():
     assert "pdf report" not in readme
     assert "automated reports" not in readme
     assert "test_failure.py" not in readme
+    assert "confusion matrix" in readme
+    assert "roc curve" in readme
 
 
 def test_plot_distribution_comparison_uses_stable_group_column():

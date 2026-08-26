@@ -1,5 +1,6 @@
 import traceback
 
+import matplotlib.pyplot as plt
 import streamlit as st
 from sklearn.metrics import roc_auc_score
 
@@ -10,6 +11,10 @@ from bias_audit_tool.preprocessing.modeling_pipeline import run_modeling_pipelin
 from bias_audit_tool.preprocessing.preprocess import recommend_preprocessing
 from bias_audit_tool.preprocessing.summary import summarize_categories
 from bias_audit_tool.preprocessing.transform import apply_preprocessing
+from bias_audit_tool.visualization.evaluation_plots import (
+    build_confusion_matrix_figure,
+)
+from bias_audit_tool.visualization.evaluation_plots import build_roc_curve_figure
 
 
 def display_preprocessing_recommendations(df):
@@ -185,9 +190,11 @@ def run_modeling_and_fairness(
     Displays:
         - Classification report
         - ROC AUC score (if available)
+        - Confusion matrix and ROC curve on the same held-out predictions
+        - Permutation feature importance
         - Fairness metrics and disparity summary for the selected group
     """
-    st.markdown("## 🧠 Machine Learning Modeling")
+    st.markdown("## 🧠 Model Evaluation")
 
     try:
         results = run_modeling_pipeline(
@@ -210,15 +217,36 @@ def run_modeling_and_fairness(
     st.dataframe(results.report)
 
     if results.y_prob is not None:
-        auc = roc_auc_score(results.y_test, results.y_prob)
-        st.markdown(f"📈 ROC AUC: `{auc:.2f}`")
+        try:
+            auc = roc_auc_score(results.y_test, results.y_prob)
+            st.markdown(f"📈 ROC AUC: `{auc:.2f}`")
+        except ValueError:
+            st.info(
+                "ROC AUC is unavailable because the held-out test split "
+                "contains only one class."
+            )
+
+    plot_col, roc_col = st.columns(2)
+    with plot_col:
+        st.markdown("### Confusion Matrix")
+        cm_fig, _ = build_confusion_matrix_figure(results.y_test, results.y_pred)
+        st.pyplot(cm_fig)
+        plt.close(cm_fig)
+    with roc_col:
+        st.markdown("### ROC Curve")
+        roc_fig, roc_message = build_roc_curve_figure(results.y_test, results.y_prob)
+        if roc_fig is not None:
+            st.pyplot(roc_fig)
+            plt.close(roc_fig)
+        else:
+            st.info(roc_message)
 
     if results.feature_importance is not None:
         st.markdown("### 🔍 Feature Importance (Permutation)")
         st.dataframe(results.feature_importance.head(10))
 
     if group_col:
-        st.markdown("### ⚖️ Fairness diagnostics with `fairlearn`")
+        st.markdown("## ⚖️ Group Fairness Diagnostics")
         st.markdown(f"#### Sensitive Attribute: `{group_col}`")
         render_fairness_caveats()
 

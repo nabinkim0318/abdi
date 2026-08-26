@@ -11,7 +11,7 @@ Exploratory bias and fairness diagnostics for tabular datasets using Fairlearn a
 - User-supplied expected-distribution (benchmark) representation analysis
 - Binary-classification modeling with train-only-fitted preprocessing
 - Optional inclusion or exclusion of the selected sensitive attribute as a model feature
-- Held-out classification metrics, ROC AUC, and permutation feature importance
+- Held-out classification metrics, ROC AUC, a confusion matrix, an ROC curve, and permutation feature importance
 - Group-wise fairness diagnostics, including Demographic Parity Difference and Equalized Odds Difference
 - Count-plot visualizations for selected grouping columns and observed-vs-expected distribution charts
 
@@ -75,10 +75,12 @@ bias_audit_tool/
 │   └── ui_helpers.py              # Streamlit helpers for preprocessing and modeling
 ├── visualization/
 │   ├── ui_blocks.py               # Representation-audit UI
-│   └── visualization.py           # Live charts
+│   ├── visualization.py           # Live charts
+│   └── evaluation_plots.py        # Held-out confusion matrix and ROC figures
 
 tests/
 ├── test_fairness.py
+├── test_model_evaluation_plots.py
 ├── test_modeling_pipeline.py
 ├── test_preprocess.py
 ├── test_product_surface.py
