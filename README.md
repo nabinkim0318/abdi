@@ -1,8 +1,53 @@
-# 🧮 Bias Audit Tool
+# 🧮 ABDI — Bias Audit Tool
 
-Exploratory bias and fairness diagnostics for tabular datasets using Fairlearn and scikit-learn. The Streamlit app helps researchers inspect representation and group-wise performance disparities. It does not establish that a dataset or model is fair, unbiased, non-discriminatory, or legally compliant.
+**Exploratory bias and fairness diagnostics for tabular datasets using Fairlearn and scikit-learn. Streamlit app with a synthetic demo only — not a fairness verdict or compliance determination.**
+
+[![CI](https://github.com/nabinkim0318/abdi/actions/workflows/ci.yaml/badge.svg)](https://github.com/nabinkim0318/abdi/actions/workflows/ci.yaml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![Fairlearn](https://img.shields.io/badge/Fairlearn-0.10-9cf)](https://fairlearn.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+**Live demo:** not deployed yet. Run it locally in under a minute (`make install && make run` — see Installation below), or see [Deploying a live demo](#deploying-a-live-demo) to publish your own on Streamlit Community Cloud in about two minutes.
+
+> ABDI is an exploratory diagnostic tool. Reported disparities and bootstrap intervals do not establish that a model is fair, unbiased, non-discriminatory, or legally compliant — see [Scope limits](#scope-limits).
 
 The bundled demo dataset is fully synthetic. See [DATA_PROVENANCE.md](DATA_PROVENANCE.md). User-uploaded datasets are supplied by the user and may contain sensitive information. The bundled repository demo itself is synthetic.
+
+## Screenshots
+
+Both screenshots come from a real local run of `app.py` against the committed synthetic demo (`bias_audit_tool/sample_data/demo.csv`), sensitive attribute `demo_group_mapped`, target `outcome`.
+
+**Input and model evaluation** — target selection, held-out ROC AUC, confusion matrix, and ROC curve.
+
+![Model evaluation: target selection, ROC AUC, confusion matrix, and ROC curve](docs/assets/abdi-hero-model-evaluation.png)
+
+**Group fairness diagnostics** — sensitive attribute, the exploratory-diagnostic caveat, held-out group support, and Demographic Parity / Equalized Odds differences with bootstrap intervals.
+
+![Group fairness diagnostics: group support table, Demographic Parity Difference, Equalized Odds Difference, and bootstrap confidence intervals](docs/assets/abdi-hero-fairness-diagnostics.png)
+
+## Why this project
+
+Fairness metrics can be misleading when preprocessing leaks information, sensitive attributes are handled inconsistently, groups are very small, or metric uncertainty is hidden. ABDI demonstrates a more defensible exploratory workflow by pairing Fairlearn metrics with held-out evaluation, group-support context, explicit caveats, and reproducible data/CI.
+
+## Key capabilities
+
+- **Leakage-safe modeling** — preprocessing transformers are fit on the training split only.
+- **Fairness diagnostics** — Fairlearn Demographic Parity Difference and Equalized Odds Difference computed on held-out predictions.
+- **Uncertainty context** — held-out group support counts, sparse-support warnings, and percentile bootstrap intervals with the fitted model fixed.
+- **Sensitive-feature controls** — the selected sensitive attribute and its direct encodings are excluded from model features by default, and can be opted back in.
+- **Data guardrails** — duplicate CSV headers, non-finite values, tiny datasets, weak class support, and extreme imbalance are surfaced before modeling.
+- **Reproducibility** — a synthetic demo fixture, a generated `requirements.txt` contract, fresh-environment CI, and a deterministic demo generator.
+
+### Try the demo
+
+1. Open the app (locally via `make run`, or the live demo once deployed).
+2. Upload `bias_audit_tool/sample_data/demo.csv`.
+3. Select `demo_group_mapped` as the sensitive attribute.
+4. Paste the benchmark from `bias_audit_tool/sample_data/demo_benchmark.json`.
+5. Enable modeling and select `outcome` as the target.
+
+See [Demo walkthrough](#demo-walkthrough-synthetic-csv) below for the full step-by-step, including what each output means.
 
 ---
 
@@ -33,6 +78,44 @@ The bundled demo dataset is fully synthetic. See [DATA_PROVENANCE.md](DATA_PROVE
 - Benchmark-relative representation analysis requires a user-supplied expected distribution
 - Duplicate headers, non-finite numeric values, and below-minimum class/row support block modeling; they are not auto-repaired
 - Extreme class imbalance produces a heuristic warning only — classes are not resampled and thresholds are not changed
+
+## Architecture
+
+```text
+CSV
+ ↓
+Input validation
+ ↓
+Exploratory preprocessing UI
+ ↓
+Train/test split
+ ↓
+Train-only preprocessing
+ ↓
+Classifier
+ ↓
+Held-out evaluation
+ ├─ classification metrics / ROC / confusion matrix
+ └─ Fairlearn group diagnostics
+      ├─ group support
+      └─ bootstrap uncertainty
+```
+
+## Testing & reproducibility
+
+CI runs three independent jobs on every push and pull request:
+
+- **lint-and-test** — Ruff, Black, pre-commit hooks, and the pytest suite, all under Poetry.
+- **Requirements drift** — `poetry check --lock`, then a diff between the committed `requirements.txt` and a fresh `poetry export`.
+- **Fresh Environment Reproducibility** — a clean `pip install -r requirements.txt`, an import smoke test, and a bounded headless Streamlit startup.
+
+Run the same checks locally:
+
+```bash
+make test
+make precommit
+make check-requirements
+```
 
 ---
 
@@ -80,6 +163,20 @@ streamlit run app.py
 This path is what the Fresh Environment Reproducibility CI job checks. It
 does not install pytest, pre-commit, Black, or Ruff.
 
+### Deploying a live demo
+
+`app.py` is a single-file Streamlit entry point that reads the committed
+`requirements.txt`, so it deploys to [Streamlit Community
+Cloud](https://streamlit.io/cloud) with no code changes:
+
+1. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub.
+2. Click **New app**, then pick this repository, branch `main`, and main file `app.py`.
+3. Deploy. Streamlit Community Cloud installs directly from the committed
+   `requirements.txt` on Python 3.12 — the same runtime path the Fresh
+   Environment Reproducibility CI job checks.
+4. Once live, update this README's live-demo line and the repository's
+   GitHub **About → Website** field with the deployed URL.
+
 ### Regenerating requirements.txt
 
 Requires Poetry 2.x. Poetry 2 needs `poetry-plugin-export`; `make
@@ -108,6 +205,15 @@ Use the committed synthetic demo, not any external clinical extract.
 6. Run model evaluation. Inspect the classification report, ROC-AUC, Confusion Matrix, ROC Curve, permutation importance, held-out group support, group-wise fairness diagnostics, DP Difference, EO Difference, and the DP/EO bootstrap intervals.
 
 Do not interpret demo group differences as real-world demographic findings.
+
+## Data provenance
+
+The bundled demo dataset is fully synthetic and generated locally with a
+fixed seed. See [DATA_PROVENANCE.md](DATA_PROVENANCE.md) for the generator,
+the data dictionary, and the git-history notes on previously removed
+external clinical artifacts. User-uploaded datasets are supplied by the
+user and may contain sensitive information; this repository makes no
+privacy or compliance claims about uploads.
 
 📁 Project Structure
 ```bash
@@ -156,6 +262,9 @@ scripts/
 ├── requirements-contract.sh       # Export/check runtime requirements.txt
 ├── runtime_import_smoke.py        # Clean-env application import smoke
 └── streamlit_startup_smoke.py     # Bounded headless Streamlit startup smoke
+
+docs/
+└── assets/                        # README screenshots (synthetic demo only)
 
 Makefile                           # Common tasks: install, run, lint, test, requirements
 pyproject.toml                     # Declared dependencies and build settings
