@@ -37,30 +37,67 @@ The bundled demo dataset is fully synthetic. See [DATA_PROVENANCE.md](DATA_PROVE
 ---
 
 ## 🛠️ Installation
-### 1. Clone the repository
+
+`pyproject.toml` is the declared dependency source. `poetry.lock` pins the
+resolved development graph. `requirements.txt` is a generated runtime
+install artifact for a clean Python environment — do not edit it by hand.
+
+CI verifies both the Poetry development environment (lint, hooks, pytest)
+and a clean Python 3.12 `pip install -r requirements.txt` runtime
+installation (import smoke and a bounded headless Streamlit startup).
+
+### Developer install (Poetry)
+
 ```bash
 git clone https://github.com/nabinkim0318/abdi.git
 cd abdi
 ```
 
-### 2. (Optional) Install Poetry if not already installed
+Install Poetry if needed:
+
 ```bash
 curl -sSL https://install.python-poetry.org | python3 -
 ```
 
-### 3. Install all dependencies & set up pre-commit hooks
 ```bash
+poetry install --with dev
 make install
 ```
 
-### 4. Activate the Poetry-managed virtual environment
 ```bash
 make setup
+make run
 ```
 
-### 5. Run the app locally
+`make install` also installs pre-commit hooks. `poetry install --with dev`
+is the preferred development environment.
+
+### Runtime / deployment install
+
+From a clean Python 3.12 environment, using the committed checkout:
+
 ```bash
-make run
+python -m pip install -r requirements.txt
+streamlit run app.py
+```
+
+This path is what the Fresh Environment Reproducibility CI job checks. It
+does not install pytest, pre-commit, Black, or Ruff.
+
+### Regenerating requirements.txt
+
+Requires Poetry 2.x. Poetry 2 needs `poetry-plugin-export`; `make
+requirements` installs `poetry-plugin-export==1.9.0` into that Poetry
+installation if `poetry export` is missing.
+
+```bash
+make requirements
+```
+
+To verify the committed file without writing to the working tree:
+
+```bash
+make check-requirements
 ```
 
 ## Demo walkthrough (synthetic CSV)
@@ -119,11 +156,15 @@ tests/
 ├── test_upload_state.py
 
 scripts/
-└── generate_demo_data.py          # Deterministic synthetic demo generator (seed 42)
+├── generate_demo_data.py          # Deterministic synthetic demo generator (seed 42)
+├── requirements-contract.sh       # Export/check runtime requirements.txt
+├── runtime_import_smoke.py        # Clean-env application import smoke
+└── streamlit_startup_smoke.py     # Bounded headless Streamlit startup smoke
 
-Makefile                           # Common tasks: run, lint, test
-pyproject.toml                     # Project dependencies and build settings
-requirements.txt                   # Plain dependency list (optional)
+Makefile                           # Common tasks: run, lint, test, requirements
+pyproject.toml                     # Declared dependencies and build settings
+poetry.lock                        # Resolved Poetry dependency graph
+requirements.txt                   # Generated runtime install artifact
 README.md                          # This file
 DATA_PROVENANCE.md                 # Synthetic demo provenance and data dictionary
 LICENSE                            # MIT License

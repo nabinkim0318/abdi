@@ -33,3 +33,48 @@ jobs:
 
     - name: Run tests
       run: make test
+
+  requirements-drift:
+    name: Requirements drift
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install Poetry
+      run: |
+        curl -sSL https://install.python-poetry.org | python3 - --version 2.4.1
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+    - name: Check requirements.txt matches Poetry export
+      run: make check-requirements
+
+  fresh-runtime-install:
+    name: Fresh Environment Reproducibility
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: pip
+        cache-dependency-path: requirements.txt
+
+    - name: Install runtime requirements
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -r requirements.txt
+
+    - name: Runtime import smoke
+      run: python scripts/runtime_import_smoke.py
+
+    - name: Headless Streamlit startup smoke
+      run: python scripts/streamlit_startup_smoke.py
