@@ -1,6 +1,6 @@
 # ======== Project Setup ========
 
-.PHONY: install clean lint format test run
+.PHONY: install clean lint format test run requirements check-requirements
 
 install:
 	poetry install
@@ -26,6 +26,14 @@ test:
 
 run:
 	poetry run streamlit run app.py
+
+# ======== Dependency contract ========
+
+requirements:
+	bash scripts/requirements-contract.sh export
+
+check-requirements:
+	bash scripts/requirements-contract.sh check
 
 # ======== Maintenance ========
 
