@@ -8,7 +8,7 @@
 [![Fairlearn](https://img.shields.io/badge/Fairlearn-0.10-9cf)](https://fairlearn.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**Live demo:** not deployed yet. Run it locally in under a minute (`make install && make run` — see Installation below), or see [Deploying a live demo](#deploying-a-live-demo) to publish your own on Streamlit Community Cloud in about two minutes.
+**Live demo:** [abdi-bias-audit.streamlit.app](https://abdi-bias-audit.streamlit.app/) — hosted on Streamlit Community Cloud. See [Try the demo](#try-the-demo) below, or run it locally with `make install && make run`.
 
 > ABDI is an exploratory diagnostic tool. Reported disparities and bootstrap intervals do not establish that a model is fair, unbiased, non-discriminatory, or legally compliant — see [Scope limits](#scope-limits).
 
@@ -41,7 +41,7 @@ Fairness metrics can be misleading when preprocessing leaks information, sensiti
 
 ### Try the demo
 
-1. Open the app (locally via `make run`, or the live demo once deployed).
+1. Open the [live app](https://abdi-bias-audit.streamlit.app/) (or run it locally with `make run`).
 2. Upload `bias_audit_tool/sample_data/demo.csv`.
 3. Select `demo_group_mapped` as the sensitive attribute.
 4. Paste the benchmark from `bias_audit_tool/sample_data/demo_benchmark.json`.
@@ -163,19 +163,18 @@ streamlit run app.py
 This path is what the Fresh Environment Reproducibility CI job checks. It
 does not install pytest, pre-commit, Black, or Ruff.
 
-### Deploying a live demo
+### Deploying your own live demo
 
-`app.py` is a single-file Streamlit entry point that reads the committed
-`requirements.txt`, so it deploys to [Streamlit Community
-Cloud](https://streamlit.io/cloud) with no code changes:
+The hosted demo above runs on [Streamlit Community
+Cloud](https://streamlit.io/cloud). `app.py` is a single-file Streamlit entry
+point that reads the committed `requirements.txt`, so a fork deploys with no
+code changes:
 
 1. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub.
-2. Click **New app**, then pick this repository, branch `main`, and main file `app.py`.
+2. Click **New app**, then pick your fork, branch `main`, and main file `app.py`.
 3. Deploy. Streamlit Community Cloud installs directly from the committed
    `requirements.txt` on Python 3.12 — the same runtime path the Fresh
    Environment Reproducibility CI job checks.
-4. Once live, update this README's live-demo line and the repository's
-   GitHub **About → Website** field with the deployed URL.
 
 ### Regenerating requirements.txt
 
