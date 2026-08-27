@@ -1,5 +1,3 @@
-"""Contract tests for requirements drift detection and startup smokes."""
-
 import os
 import subprocess
 import sys
