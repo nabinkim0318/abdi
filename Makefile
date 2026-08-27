@@ -3,11 +3,8 @@
 .PHONY: install clean lint format test run requirements check-requirements
 
 install:
-	poetry install
-	pre-commit install
-
-setup:
-	poetry shell
+	poetry install --with dev
+	poetry run pre-commit install
 
 # ======== Development ========
 
@@ -51,7 +48,7 @@ check:
 	poetry check
 
 precommit:
-	pre-commit run --all-files
+	poetry run pre-commit run --all-files
 
 commit:
 ifndef m

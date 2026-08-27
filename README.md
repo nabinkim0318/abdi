@@ -60,17 +60,13 @@ curl -sSL https://install.python-poetry.org | python3 -
 ```
 
 ```bash
-poetry install --with dev
 make install
-```
-
-```bash
-make setup
 make run
 ```
 
-`make install` also installs pre-commit hooks. `poetry install --with dev`
-is the preferred development environment.
+`make install` runs `poetry install --with dev` and installs pre-commit
+hooks from that Poetry environment. Do not activate a Poetry shell;
+`make run`, `make test`, and `make lint` already use `poetry run`.
 
 ### Runtime / deployment install
 
@@ -161,7 +157,7 @@ scripts/
 ├── runtime_import_smoke.py        # Clean-env application import smoke
 └── streamlit_startup_smoke.py     # Bounded headless Streamlit startup smoke
 
-Makefile                           # Common tasks: run, lint, test, requirements
+Makefile                           # Common tasks: install, run, lint, test, requirements
 pyproject.toml                     # Declared dependencies and build settings
 poetry.lock                        # Resolved Poetry dependency graph
 requirements.txt                   # Generated runtime install artifact

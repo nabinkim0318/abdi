@@ -27,9 +27,7 @@ jobs:
       run: poetry install --with dev
 
     - name: Run pre-commit hooks
-      run: |
-        pip install pre-commit
-        pre-commit run --all-files
+      run: poetry run pre-commit run --all-files
 
     - name: Run tests
       run: make test
@@ -50,6 +48,9 @@ jobs:
       run: |
         curl -sSL https://install.python-poetry.org | python3 - --version 2.4.1
         echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+    - name: Check poetry.lock matches pyproject.toml
+      run: poetry check --lock
 
     - name: Check requirements.txt matches Poetry export
       run: make check-requirements
